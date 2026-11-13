@@ -6,7 +6,13 @@ at each phase; do not postpone correctness behind presentation work.
 
 ## 1. Bootstrap and prove the browser boundary
 
-- Establish the Rust workspace, Bun scripts, rust-js browser build, and CI.
+Implemented locally on 2026-11-13. The app builds from a pinned rust-js
+submodule; four production-browser tests cover the Rust UI, Three.js, IndexedDB,
+and Playwright WebMCP. Codex separately discovered and invoked a live tool
+through Playwright CLI and checked visible state. See [test evidence](../TESTS.md).
+GitHub Pages builds and deploys on pushes to main; tests run locally.
+
+- Establish the Rust workspace, Bun scripts, rust-js browser build, and Pages deployment.
 - Pin the compiler/toolchain and document reproducible build commands.
 - Compile a small React page from Rust and inspect the generated JavaScript.
 - Prove the required IndexedDB, Three.js, and WebMCP binding shapes early.
@@ -93,7 +99,7 @@ Exit: a complete, watchable, recoverable agent-vs-agent match across machines.
 
 These do not block the documentation bootstrap:
 
-- Target Chrome version and compatible agent client for WebMCP acceptance tests.
+- Additional agent clients beyond the verified Playwright CLI and Chromium setup.
 - Initial tailnet hosting machine, HTTPS setup, and player-session lifecycle.
 - Exact batch limits, tie rules, clock/restart policy, and assistance categories.
 - Durable format/migration policy and replay retention limits.

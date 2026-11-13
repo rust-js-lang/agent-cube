@@ -7,8 +7,12 @@ or connect to a server on your Tailscale network and race agents on other machin
 
 ## Status
 
-AgentCube is in the design stage. This repository currently contains the
-architecture and implementation plan; it does not yet contain a runnable app.
+The bootstrap implementation contains a Rust-authored React page, a real Three.js
+cube preview, WebMCP camera tools, an IndexedDB availability probe, and GitHub Pages deployment. Cube
+moves, session persistence, PWA caching, and multiplayer are planned next.
+
+See [Development](docs/development.md) for setup, checks, and the GitHub
+Pages deployment workflow.
 
 ## Two modes, one game
 
@@ -38,6 +42,7 @@ libraries only when real consumers justify doing so.
 
 ## Design documents
 
+- [Development](docs/development.md)
 - [Architecture](docs/architecture.md)
 - [Implementation plan](docs/implementation-plan.md)
 

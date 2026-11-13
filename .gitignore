@@ -10,3 +10,9 @@
 *.db
 *.db-shm
 *.db-wal
+
+/.cargo/
+*.js.map
+*.jsx.map
+
+/.playwright-cli/
