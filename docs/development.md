@@ -41,8 +41,11 @@ incremental build/check 120 seconds, browser installation 120 seconds, tests
 ```sh
 bun run build
 bun run check
+bun run test:core
 bunx --bun playwright install chromium
 bun run test
+bun run test:mutations
+bun run test:renderer-mutation
 ```
 
 Build compiles Rust and bundles dist. Check verifies generated output against
@@ -51,30 +54,21 @@ artifact on port 4173, use available CPU cores, and launch the pinned Chromium
 with --enable-features=WebMCP enabled. They use Playwright's page.webmcp.tools() and page.webmcp.callTool(), backed by the real document.modelContext API,
 not a substitute registry. Test failure must not silently skip unsupported APIs.
 
-The four-test suite covers a visibly rendered canvas and changed pixels, responsive
-layout, IndexedDB enumeration, native WebMCP discovery/execution/readback,
-invalid input, manual controls when WebMCP is absent, and denied storage/WebGL. These are bootstrap
-integration checks, not cube-engine or persistence correctness tests.
-
-Playwright WebMCP calls prove browser integration. They do not prove that a
-natural-language agent selects the right tool. The separate manual acceptance
-is: open the app with a compatible agent client, ask “Show me the front of the
-cube,” verify the camera changes, and ask the agent to read the preview state.
-Record the client/browser versions when that acceptance is performed.
+See [TESTS.md](../TESTS.md) for the seven browser tests, six native and generated-JavaScript tests, 64 parity probes, and four mutation checks.
 
 ## Current scope
 
-The preview is a solved cube visualization, not a playable cube engine. Human
-buttons and set_camera_view use the same action. get_preview_state reads that
-state. The GoogleChromeLabs use-webmcp-tool hook owns browser feature detection,
-registration errors, callback freshness, and AbortSignal cleanup. Its npm API
-is bound from Rust; AgentCube does not implement a browser registry or polyfill.
+The local cube supports all 18 face turns, legal shuffles, solved detection, and
+revision-checked batches. Human controls and WebMCP share the same referee. Tools
+are get_cube_state, shuffle_cube, apply_moves, and set_camera_view. Agents obtain
+all facelets and submit solutions; the app does not contain a solver shortcut.
 
-The IndexedDB check enumerates databases. It does not save sessions, establish
-write permission, or promise permanent storage. Actual transactional persistence
-belongs to milestone three. Unsupported WebMCP leaves the manual controls usable.
-The app has no backend and no model API keys; cloud agents need their own network.
-PWA installation and cached offline reload remain milestone four.
+A stable Three.js scene shows the current stickers. If WebGL creation fails or
+its context is lost, a CSS cube replaces the hidden canvas. Both consume exactly
+the same state. The six-face view remains available independently of graphics.
+
+The IndexedDB probe is only an availability check. Sessions do not persist yet;
+reload starts fresh. PWA caching and multiplayer remain later milestones.
 
 ## GitHub Pages deployment
 

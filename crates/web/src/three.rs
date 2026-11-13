@@ -16,6 +16,12 @@ pub struct BoxGeometry(PhantomData<JsObject>);
 pub struct MeshBasicMaterial(PhantomData<JsObject>);
 #[cfg_attr(rust_js, rust_js::types = "three#Mesh")]
 pub struct Mesh(PhantomData<JsObject>);
+#[cfg_attr(rust_js, rust_js::types = "three#PlaneGeometry")]
+pub struct PlaneGeometry(PhantomData<JsObject>);
+#[cfg_attr(rust_js, rust_js::types = "three#Color")]
+pub struct Color(PhantomData<JsObject>);
+#[cfg_attr(rust_js, rust_js::types = "three#Euler")]
+pub struct Euler(PhantomData<JsObject>);
 #[cfg_attr(rust_js, rust_js::types = "three#Vector3")]
 pub struct Vector3(PhantomData<JsObject>);
 
@@ -55,7 +61,7 @@ pub fn material(options: MaterialOptions) -> &'static MeshBasicMaterial {
     unreachable!()
 }
 #[cfg_attr(rust_js, rust_js::link_name = "new three#Mesh")]
-pub fn mesh(geometry: &BoxGeometry, materials: Vec<&MeshBasicMaterial>) -> &'static Mesh {
+pub fn mesh<G: Geometry>(geometry: &G, material: &MeshBasicMaterial) -> &'static Mesh {
     unreachable!()
 }
 
@@ -96,11 +102,6 @@ impl Vector3 {
     }
 }
 impl WebGLRenderer {
-    #[cfg_attr(rust_js, rust_js::link_name = "forceContextLoss")]
-    pub fn force_context_loss(&self) {
-        unreachable!()
-    }
-
     #[cfg_attr(rust_js, rust_js::link_name = "setSize")]
     pub fn set_size(&self, width: f64, height: f64, update_style: bool) {
         unreachable!()
@@ -130,3 +131,43 @@ impl MeshBasicMaterial {
         unreachable!()
     }
 }
+
+#[cfg_attr(rust_js, rust_js::link_name = "new three#PlaneGeometry")]
+pub fn plane_geometry(width: f64, height: f64) -> &'static PlaneGeometry {
+    unreachable!()
+}
+impl Mesh {
+    #[cfg_attr(rust_js, rust_js::link_name = "get rotation")]
+    pub fn rotation(&self) -> &'static Euler {
+        unreachable!()
+    }
+}
+impl Euler {
+    #[cfg_attr(rust_js, rust_js::link_name = "set")]
+    pub fn set(&self, x: f64, y: f64, z: f64) -> &'static Euler {
+        unreachable!()
+    }
+}
+impl MeshBasicMaterial {
+    #[cfg_attr(rust_js, rust_js::link_name = "get color")]
+    pub fn color(&self) -> &'static Color {
+        unreachable!()
+    }
+}
+impl Color {
+    #[cfg_attr(rust_js, rust_js::link_name = "setHex")]
+    pub fn set_hex(&self, hex: u32) -> &'static Color {
+        unreachable!()
+    }
+}
+impl PlaneGeometry {
+    #[cfg_attr(rust_js, rust_js::link_name = "dispose")]
+    pub fn dispose(&self) {
+        unreachable!()
+    }
+}
+
+// Both concrete geometries extend Three.js BufferGeometry.
+pub trait Geometry {}
+impl Geometry for BoxGeometry {}
+impl Geometry for PlaneGeometry {}

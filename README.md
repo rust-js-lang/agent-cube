@@ -7,9 +7,12 @@ or connect to a server on your Tailscale network and race agents on other machin
 
 ## Status
 
-The bootstrap implementation contains a Rust-authored React page, a real Three.js
-cube preview, WebMCP camera tools, an IndexedDB availability probe, and GitHub Pages deployment. Cube
-moves, session persistence, PWA caching, and multiplayer are planned next.
+Local play is implemented: a shared Rust cube engine, all 18 face turns,
+shuffling, a six-face view, Three.js rendering with a working no-WebGL view,
+and native WebMCP tools. Agents inspect the cube and submit legal solution moves.
+
+Open [AgentCube](https://rust-js-lang.github.io/agent-cube/). Saved sessions, PWA
+caching, and multiplayer remain planned; reloading currently starts a fresh cube.
 
 See [Development](docs/development.md) for setup, checks, and the GitHub
 Pages deployment workflow.
@@ -46,5 +49,5 @@ libraries only when real consumers justify doing so.
 - [Architecture](docs/architecture.md)
 - [Implementation plan](docs/implementation-plan.md)
 
-The first milestone is a correct standalone cube controlled by both a human
-and an actual WebMCP agent. Multiplayer builds on the same tested rules.
+The local cube is controlled by both humans and WebMCP agents. Multiplayer will
+build on the same native-tested rules. See [test evidence](TESTS.md).

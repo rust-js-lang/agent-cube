@@ -8,6 +8,8 @@ publish.workspace = true
 path = "src/App.rs"
 
 [dependencies]
+cube-core = { path = "../cube-core" }
+serde_json = "1"
 js = { package = "rust-js-builtins", path = "../../rust-js/builtins" }
 react = { package = "rust-js-react", path = "../../rust-js/react" }
 webapi = { package = "rust-js-webapi", path = "../../rust-js/webapi" }

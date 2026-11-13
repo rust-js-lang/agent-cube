@@ -74,7 +74,9 @@ local session and cannot produce an online result.
 ## Rules and representation
 
 Use eight corner positions/orientations and twelve edge positions/orientations
-as the canonical cube representation, with fixed centers. Derive the 54 visible
+as the canonical cube representation, with fixed centers. The implemented
+orientation uses exact integer sticker normals on those pieces; it never reads
+back rendering transforms. Derive the 54 visible
 stickers from it. Centralize legal move permutations and notation parsing.
 
 Start with U, D, L, R, F, B and their inverse and double turns. Specify face order,
@@ -163,9 +165,9 @@ Initial conceptual tools:
 
 | Tool | Behavior |
 |---|---|
-| get_cube_state | Return facelets, notation conventions, revision, lifecycle, and solved status |
-| apply_moves | Validate a bounded sequence against an expected revision and submit it |
-| scramble | Create a reproducible local practice challenge; unavailable in active races |
+| get_cube_state | Return all facelets, fixed face order, revision, move count, and solved status |
+| apply_moves | Apply a bounded notation string against expectedRevision, atomically |
+| shuffle_cube | Create a new local random-move challenge, default length 20; unavailable in future active races |
 
 Register tools using the browser's current supported imperative WebMCP API.
 At design time Chrome documents document.modelContext.registerTool; verify the

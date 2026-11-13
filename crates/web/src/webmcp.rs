@@ -21,6 +21,9 @@ pub struct Schema {
 #[derive(Default)]
 pub struct Properties {
     pub view: Option<ViewProperty>,
+    pub moves: Option<TextProperty>,
+    pub expected_revision: Option<IntegerProperty>,
+    pub length: Option<IntegerProperty>,
 }
 
 pub struct ViewProperty {
@@ -71,4 +74,15 @@ where
     F: Fn(Option<&Unknown>, ExecutionOptions) -> ToolResponse + 'static,
 {
     unreachable!()
+}
+
+pub struct TextProperty {
+    pub r#type: &'static str,
+    pub description: &'static str,
+    pub max_length: u32,
+}
+pub struct IntegerProperty {
+    pub r#type: &'static str,
+    pub minimum: u32,
+    pub maximum: u32,
 }

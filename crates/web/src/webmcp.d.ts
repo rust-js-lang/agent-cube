@@ -17,6 +17,9 @@ export interface Schema {
 
 export interface Properties {
     view?: ViewProperty | undefined;
+    moves?: TextProperty | undefined;
+    expectedRevision?: IntegerProperty | undefined;
+    length?: IntegerProperty | undefined;
 }
 
 export interface ViewProperty {
@@ -48,4 +51,16 @@ export interface ToolResponse {
 export interface TextContent {
     type: string;
     text: string;
+}
+
+export interface TextProperty {
+    type: string;
+    description: string;
+    maxLength: number;
+}
+
+export interface IntegerProperty {
+    type: string;
+    minimum: number;
+    maximum: number;
 }

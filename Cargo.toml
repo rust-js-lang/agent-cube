@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/web"]
+members = ["crates/cube-core", "crates/web"]
 exclude = ["rust-js"]
 resolver = "3"
 

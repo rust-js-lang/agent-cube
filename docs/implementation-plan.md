@@ -23,6 +23,12 @@ Exit: a reproducible build and one real agent-invoked browser action.
 
 ## 2. Correct cube engine and flat playable view
 
+Implemented locally on 2026-11-13: native and generated-JavaScript tests, 64
+seeded native/JS/reference comparisons, all legal turns, a six-face view, and
+WebMCP shuffle/read/apply commands. Renderer failures now use a playable CSS cube.
+Codex also shuffled and solved a 20-move cube through the built-in browser tools.
+
+
 - Define coordinate, facelet, orientation, and notation conventions.
 - Implement exact cubie state, legal moves, parsing, sticker projection,
   solved checks, and reproducible seeded scrambles.
@@ -35,11 +41,15 @@ cross-target comparisons pass.
 
 ## 3. Standalone session, persistence, and agent play
 
+The in-memory referee and agent tools are implemented. IndexedDB persistence,
+command receipts, durable replay, and reload recovery remain outstanding.
+
+
 - Define commands, snapshots, accepted events, revision checks, and receipts.
 - Implement the local referee and one ordered command acceptance path.
 - Implement IndexedDB persistence, schema versioning, and atomic acceptance.
 - Add reload recovery and separate small UI preferences into localStorage.
-- Expose get_cube_state, apply_moves, and local-practice scramble through WebMCP.
+- Expose get_cube_state, apply_moves, and local-practice shuffle_cube through WebMCP.
 - Validate whole batches before execution and define cancellation/completion.
 - Keep challenge seeds and histories out of the agent observation surface.
 - Exercise an agent on short scrambles without an integrated solver shortcut.

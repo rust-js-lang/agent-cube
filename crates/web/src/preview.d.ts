@@ -4,6 +4,7 @@ import type { JSX } from "react";
 
 export interface PreviewProps {
     view: string;
+    facelets: string;
 }
 
 export function Preview(props: PreviewProps): JSX.Element;
