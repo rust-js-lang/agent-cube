@@ -1,6 +1,6 @@
 //! Bind the public use-webmcp-tool@0.3.0 API, not a replacement browser registry.
 //! Chrome's recommended React integration owns detection and AbortSignal cleanup.
-use js::{Error, Unknown};
+use js::{Error, Promise, Unknown};
 use webapi::AbortSignal;
 
 pub struct ToolOptions<F> {
@@ -22,6 +22,7 @@ pub struct Schema {
 pub struct Properties {
     pub view: Option<ViewProperty>,
     pub moves: Option<TextProperty>,
+    pub command_id: Option<TextProperty>,
     pub expected_revision: Option<IntegerProperty>,
     pub length: Option<IntegerProperty>,
 }
@@ -71,7 +72,7 @@ impl ToolResponse {
 #[cfg_attr(rust_js, rust_js::link_name = "use-webmcp-tool#useWebMCP")]
 pub fn use_web_mcp<F>(options: ToolOptions<F>) -> ToolState
 where
-    F: Fn(Option<&Unknown>, ExecutionOptions) -> ToolResponse + 'static,
+    F: Fn(Option<&Unknown>, ExecutionOptions) -> Promise<ToolResponse> + 'static,
 {
     unreachable!()
 }

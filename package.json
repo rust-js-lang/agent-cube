@@ -17,10 +17,11 @@
     "test:core": "cargo test --locked --package cube-core && bun rust-js/tooling/cli.js test --package cube-core && bun run test:parity",
     "test:mutations": "bun scripts/mutations.ts",
     "test:parity": "bun tests/core-parity.ts",
-    "test:renderer-mutation": "bun scripts/renderer-mutation.ts"
+    "test:browser-mutations": "bun scripts/browser-mutations.ts"
   },
   "dependencies": {
     "@rust-js/std": "file:rust-js/std",
+    "idb": "8.0.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "three": "0.187.0",

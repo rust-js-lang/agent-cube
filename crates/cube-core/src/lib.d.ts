@@ -29,6 +29,7 @@ export interface Cube {
 }
 
 export const Cube: {
+    fromFacelets(text: string): any;
     apply(cube: Cube, movement: Move): void;
     facelets(cube: Cube): string;
     isSolved(cube: Cube): boolean;
@@ -66,5 +67,6 @@ export interface Session {
 export const Session: {
     snapshot(session: Session): Snapshot;
     applyMoves(session: Session, text: string, expectedRevision: number): any;
+    load(session: Session, facelets: string, expectedRevision: number): any;
     shuffle(session: Session, seed: number, length: number): any;
 };

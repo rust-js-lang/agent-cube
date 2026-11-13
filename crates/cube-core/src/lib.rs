@@ -1,6 +1,8 @@
 //! Exact integer cube rules. Rendering, clocks, randomness sources and I/O live outside.
 use serde::Serialize;
 
+pub mod journal;
+
 pub const FACES: [char; 6] = ['U', 'R', 'F', 'D', 'L', 'B'];
 pub const SOLVED: &str = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB";
 pub const MAX_MOVES: usize = 128;
@@ -146,7 +148,137 @@ impl Default for Cube {
     }
 }
 
+// Cyclic face order distinguishes a physical corner from its mirror image.
+const CORNER_FACES: [[usize; 3]; 8] = [
+    [0, 1, 2],
+    [0, 2, 4],
+    [0, 4, 5],
+    [0, 5, 1],
+    [3, 2, 1],
+    [3, 4, 2],
+    [3, 5, 4],
+    [3, 1, 5],
+];
+const EDGE_FACES: [[usize; 2]; 12] = [
+    [0, 1],
+    [0, 2],
+    [0, 4],
+    [0, 5],
+    [3, 1],
+    [3, 2],
+    [3, 4],
+    [3, 5],
+    [2, 1],
+    [2, 4],
+    [5, 4],
+    [5, 1],
+];
+
+struct DecodedPieces {
+    pieces: Vec<Piece>,
+    permutation: Vec<usize>,
+    orientation_sum: usize,
+}
+
+fn decode_pieces<const N: usize>(
+    values: &[char],
+    layout: &[[usize; N]],
+) -> Result<DecodedPieces, String> {
+    let mut result = DecodedPieces {
+        pieces: Vec::new(),
+        permutation: Vec::new(),
+        orientation_sum: 0,
+    };
+    for faces in layout {
+        let mut position = [0; 3];
+        for face in faces {
+            for (axis, value) in position.iter_mut().enumerate() {
+                *value += NORMALS[*face][axis];
+            }
+        }
+        let stickers: Vec<_> = faces
+            .iter()
+            .map(|face| {
+                let cell = (0..9)
+                    .find(|cell| facelet_position(*face, *cell) == position)
+                    .expect("piece facelet coordinate");
+                Sticker {
+                    normal: NORMALS[*face],
+                    color: values[face * 9 + cell],
+                }
+            })
+            .collect();
+        let identity = layout
+            .iter()
+            .enumerate()
+            .find_map(|(piece, colors)| {
+                (0..N)
+                    .find(|orientation| {
+                        (0..N).all(|index| {
+                            stickers[(index + orientation) % N].color == FACES[colors[index]]
+                        })
+                    })
+                    .map(|orientation| (piece, orientation))
+            })
+            .ok_or("The link contains an impossible or mirrored piece.")?;
+        if result.permutation.contains(&identity.0) {
+            return Err("The link repeats a cube piece.".into());
+        }
+        result.permutation.push(identity.0);
+        result.orientation_sum += identity.1;
+        result.pieces.push(Piece { position, stickers });
+    }
+    Ok(result)
+}
+
+fn parity(permutation: &[usize]) -> usize {
+    permutation
+        .iter()
+        .enumerate()
+        .map(|(i, value)| {
+            permutation[i + 1..]
+                .iter()
+                .filter(|other| *other < value)
+                .count()
+        })
+        .sum::<usize>()
+        % 2
+}
+
 impl Cube {
+    /// Parse a fixed-center URFDLB position and prove it is reachable by legal turns.
+    pub fn from_facelets(text: &str) -> Result<Self, String> {
+        let values: Vec<_> = text.chars().collect();
+        if values.len() != 54
+            || FACES
+                .iter()
+                .any(|face| values.iter().filter(|value| *value == face).count() != 9)
+        {
+            return Err(
+                "A cube link must contain exactly nine stickers of each URFDLB color.".into(),
+            );
+        }
+        if FACES
+            .iter()
+            .enumerate()
+            .any(|(face, color)| values[face * 9 + 4] != *color)
+        {
+            return Err("The link's center colors must use the fixed URFDLB frame.".into());
+        }
+        let corners = decode_pieces(&values, &CORNER_FACES)?;
+        let edges = decode_pieces(&values, &EDGE_FACES)?;
+        if corners.orientation_sum % 3 != 0
+            || edges.orientation_sum % 2 != 0
+            || parity(&corners.permutation) != parity(&edges.permutation)
+        {
+            Err("The link has an impossible twist, flip, or piece permutation.".into())
+        } else {
+            Ok(Self {
+                corners: corners.pieces,
+                edges: edges.pieces,
+            })
+        }
+    }
     pub fn apply(&mut self, movement: Move) {
         let normal = NORMALS[movement.face];
         let axis = normal
@@ -278,6 +410,21 @@ impl Session {
         }
     }
 
+    pub fn load(&mut self, facelets: &str, expected_revision: u32) -> Result<Snapshot, String> {
+        if expected_revision != self.revision {
+            return Err("Stale revision. Read the cube again.".into());
+        }
+        let cube = Cube::from_facelets(facelets)?;
+        let revision = self
+            .revision
+            .checked_add(1)
+            .ok_or("Session revision exhausted.")?;
+        self.cube = cube;
+        self.revision = revision;
+        self.move_count = 0;
+        Ok(self.snapshot())
+    }
+
     pub fn shuffle(&mut self, seed: u32, length: usize) -> Result<Snapshot, String> {
         let moves = scramble(seed, length)?;
         let revision = self
@@ -297,6 +444,55 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_positions_round_trip_reachable_cubes() {
+        for seed in 0..128 {
+            let mut cube = Cube::default();
+            for movement in scramble(seed, 100).unwrap() {
+                cube.apply(movement);
+            }
+            let imported = Cube::from_facelets(&cube.facelets()).unwrap();
+            assert_eq!(imported.facelets(), cube.facelets());
+            let mut session = Session::default();
+            let loaded = session.load(&cube.facelets(), 0).unwrap();
+            assert_eq!(loaded.move_count, 0);
+            assert_eq!(loaded.revision, 1);
+        }
+    }
+
+    #[test]
+    fn impossible_shared_positions_are_rejected() {
+        let mut impossible = Vec::new();
+        impossible.push(SOLVED[..53].to_string());
+        impossible.push(SOLVED.replacen('U', "R", 1));
+        for indices in [
+            vec![5, 10],
+            vec![8, 9, 20],
+            vec![9, 20],
+            vec![10, 19],
+            vec![4, 13],
+        ] {
+            let mut chars: Vec<_> = SOLVED.chars().collect();
+            let original = chars.clone();
+            for (i, target) in indices.iter().enumerate() {
+                chars[*target] = original[indices[(i + 1) % indices.len()]];
+            }
+            impossible.push(chars.into_iter().collect());
+        }
+        for position in impossible {
+            assert!(
+                Cube::from_facelets(&position).is_err(),
+                "accepted {position}"
+            );
+        }
+        let mut session = Session::default();
+        session.apply_moves("R", 0).unwrap();
+        let before = session.snapshot();
+        assert!(session.load("bad", 1).is_err());
+        assert!(session.load(SOLVED, 0).is_err());
+        assert_eq!(session.snapshot().facelets, before.facelets);
+    }
 
     #[test]
     fn solved_and_facelet_coordinates() {

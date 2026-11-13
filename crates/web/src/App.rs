@@ -2,15 +2,18 @@ use std::panic::catch_unwind;
 use std::rc::Rc;
 
 mod colors;
+mod idb;
 mod preview;
 mod session;
+mod storage;
 mod three;
 mod webmcp;
 
+use cube_core::journal::{Action, Command};
 use cube_core::{FACES, Session, Snapshot};
-use js::{Kind, Unknown, classify, object, settle, spawn};
+use js::{Kind, Unknown, classify, object, promise, settle, spawn};
 use react::{CSSProperties, JSX, dom::flush_sync, jsx, use_effect, use_ref, use_state};
-use webapi::window;
+use webapi::{Event, EventTargetExt, HashChangeEvent, broadcast_channel, events, window};
 
 use colors::color;
 use preview::Preview;
@@ -68,26 +71,87 @@ fn schema(properties: Properties, required: Vec<&'static str>) -> Schema {
 
 pub fn App() -> JSX::Element {
     let (snapshot, set_snapshot) = use_state(|| Session::default().snapshot());
-    let session = use_ref(Rc::new(LocalSession::new(set_snapshot))).current();
-    let (view, set_view) = use_state(|| "perspective");
-    let (storage, set_storage) = use_state(|| "Checking…");
+    let (storage, set_storage) = use_state(|| "Loading saved session…");
+    let session = use_ref(Rc::new(LocalSession::new(set_snapshot, set_storage))).current();
+    let (view, set_view) = use_state(|| {
+        catch_unwind(|| {
+            window
+                .local_storage()
+                .ok()
+                .and_then(|storage| storage.get_item("agent-cube.camera"))
+        })
+        .ok()
+        .flatten()
+        .filter(|view| view == "front")
+        .map_or("perspective", |_| "front")
+    });
     let (problem, set_problem) = use_state(|| None::<String>);
-    let change_view = move |next| flush_sync(move || set_view.set(next));
+    let (sharing, set_sharing) = use_state(|| "Copy challenge link");
+    let change_view = move |next| {
+        let _ = catch_unwind(|| {
+            if let Ok(storage) = window.local_storage() {
+                let _ = storage.set_item("agent-cube.camera", next);
+            }
+        });
+        flush_sync(move || set_view.set(next));
+    };
 
+    let initializing = Rc::clone(&session);
     use_effect(
         move || {
+            let session = Rc::clone(&initializing);
             spawn(Box::new(async move {
-                // Availability only; persisted sessions are the next milestone.
-                let available = match catch_unwind(|| window.indexed_db().databases()) {
-                    Ok(request) => settle(request).await.is_ok(),
-                    Err(_) => false,
-                };
-                set_storage.set(if available {
-                    "Available"
-                } else {
-                    "Unavailable"
-                });
+                if let Err(error) = session.initialize().await {
+                    set_storage.set("Recovery blocked");
+                    set_problem.set(Some(error));
+                }
             }));
+            let incoming = Rc::clone(&initializing);
+            let channel = catch_unwind(|| broadcast_channel::new("agent-cube.practice")).ok();
+            if let Some(channel) = channel {
+                channel.add_event_listener_named(
+                    "message",
+                    move |_| {
+                        let session = Rc::clone(&incoming);
+                        spawn(Box::new(async move {
+                            if let Err(error) = session.read().await {
+                                set_problem.set(Some(error));
+                            }
+                        }));
+                    },
+                    None,
+                );
+            }
+            initializing.set_channel(channel);
+            let focused = Rc::clone(&initializing);
+            let focus = webapi::listener(move |_: &Event| {
+                let session = Rc::clone(&focused);
+                spawn(Box::new(async move {
+                    if session.ready()
+                        && let Err(error) = session.read().await
+                    {
+                        set_problem.set(Some(error));
+                    }
+                }));
+            });
+            window.add_event_listener(events::Focus, focus, None);
+            let linking = Rc::clone(&initializing);
+            let hash = webapi::listener(move |_: &HashChangeEvent| {
+                let session = Rc::clone(&linking);
+                spawn(Box::new(async move {
+                    set_problem.set(session.load_link().await.err());
+                }));
+            });
+            window.add_event_listener(events::Hashchange, hash, None);
+            let cleanup = Rc::clone(&initializing);
+            Some(move || {
+                window.remove_event_listener(events::Focus, focus, None);
+                window.remove_event_listener(events::Hashchange, hash, None);
+                cleanup.set_channel(None);
+                if let Some(channel) = channel {
+                    channel.close();
+                }
+            })
         },
         Some(&()),
     );
@@ -101,21 +165,29 @@ pub fn App() -> JSX::Element {
             read_only_hint: true,
         },
         execute: move |input: Option<&Unknown>, options: ExecutionOptions| {
-            if options.signal.aborted() {
-                ToolResponse::text("Request cancelled.", true)
-            } else if valid_keys(input, &[], &[]) {
-                response(Ok(read_session.snapshot()))
-            } else {
-                ToolResponse::text("Expected an empty object: {}.", true)
-            }
+            let read_session = Rc::clone(&read_session);
+            promise(async move {
+                if options.signal.aborted() {
+                    ToolResponse::text("Request cancelled.", true)
+                } else if valid_keys(input, &[], &[]) {
+                    response(read_session.read().await)
+                } else {
+                    ToolResponse::text("Expected an empty object: {}.", true)
+                }
+            })
         },
     });
     let move_session = Rc::clone(&session);
     let move_tool = use_web_mcp(ToolOptions {
         name: "apply_moves",
-        description: "Apply 1–128 legal moves atomically to solve the cube. Notation: U D L R F B clockwise viewed from outside, ' for inverse, 2 for half turn; separate moves with spaces. Pass expectedRevision from get_cube_state. Invalid or stale commands change nothing. Returns the committed state after the visible cube updates.",
+        description: "Apply 1–128 legal moves atomically to solve the cube. Notation: U D L R F B clockwise viewed from outside, ' for inverse, 2 for half turn; separate moves with spaces. Pass expectedRevision from get_cube_state and a unique commandId (1–128 ASCII characters). Retry the exact request with the same ID after a lost response; a retry returns its original receipt without repeating moves. Receipt revision can precede the current state; read again to plan new moves. Invalid or stale commands change nothing. Returns the committed state after the visible cube updates.",
         input_schema: schema(
             Properties {
+                command_id: Some(TextProperty {
+                    r#type: "string",
+                    description: "Unique command ID; reuse only for an identical retry",
+                    max_length: 128,
+                }),
                 moves: Some(TextProperty {
                     r#type: "string",
                     description: "Space-separated Singmaster moves, e.g. R U R' U'",
@@ -128,41 +200,68 @@ pub fn App() -> JSX::Element {
                 }),
                 ..Properties::default()
             },
-            vec!["moves", "expectedRevision"],
+            vec!["moves", "expectedRevision", "commandId"],
         ),
         annotations: Annotations {
             read_only_hint: false,
         },
         execute: move |input: Option<&Unknown>, options: ExecutionOptions| {
-            if options.signal.aborted() {
-                ToolResponse::text("Request cancelled.", true)
-            } else if valid_keys(input, &["moves", "expectedRevision"], &[]) {
-                match (
-                    classify(js::get(input, "moves")),
-                    integer(input, "expectedRevision"),
-                ) {
-                    (Kind::String(moves), Some(revision)) if moves.chars().count() <= 1024 => {
-                        response(move_session.apply(moves, revision))
+            let move_session = Rc::clone(&move_session);
+            promise(async move {
+                if options.signal.aborted() {
+                    ToolResponse::text("Request cancelled.", true)
+                } else if valid_keys(input, &["moves", "expectedRevision", "commandId"], &[]) {
+                    match (
+                        classify(js::get(input, "moves")),
+                        integer(input, "expectedRevision"),
+                        classify(js::get(input, "commandId")),
+                    ) {
+                        (Kind::String(moves), Some(revision), Kind::String(id))
+                            if moves.chars().count() <= 1024 =>
+                        {
+                            response(
+                                move_session
+                                    .submit(
+                                        Command {
+                                            command_id: id.into(),
+                                            expected_revision: revision,
+                                            action: Action::Moves(moves.into()),
+                                        },
+                                        Some(options.signal),
+                                    )
+                                    .await,
+                            )
+                        }
+                        _ => ToolResponse::text(
+                            "Expected moves as a string and expectedRevision as a nonnegative integer.",
+                            true,
+                        ),
                     }
-                    _ => ToolResponse::text(
-                        "Expected moves as a string and expectedRevision as a nonnegative integer.",
+                } else {
+                    ToolResponse::text(
+                        "Expected exactly moves, expectedRevision and commandId. Read the state first.",
                         true,
-                    ),
+                    )
                 }
-            } else {
-                ToolResponse::text(
-                    "Expected exactly moves and expectedRevision. Read the state first.",
-                    true,
-                )
-            }
+            })
         },
     });
     let shuffle_session = Rc::clone(&session);
     let shuffle_tool = use_web_mcp(ToolOptions {
         name: "shuffle_cube",
-        description: "Start a new local challenge from the solved cube with a legal random-move shuffle. Optional length is 1–100, default 20. Clears the move count, advances the revision, and returns all stickers. The scramble sequence and seed are not exposed. This is not uniform random-state sampling.",
+        description: "Start a new local challenge from the solved cube with a legal random-move shuffle. Supply a unique commandId and expectedRevision from get_cube_state. Retry identical requests with the same ID to recover the original result. Optional length is 1–100, default 20. Clears the move count, advances the revision, and returns all stickers. The scramble sequence and seed are not exposed. This is not uniform random-state sampling.",
         input_schema: schema(
             Properties {
+                command_id: Some(TextProperty {
+                    r#type: "string",
+                    description: "Unique command ID; reuse only for an identical retry",
+                    max_length: 128,
+                }),
+                expected_revision: Some(IntegerProperty {
+                    r#type: "integer",
+                    minimum: 0,
+                    maximum: u32::MAX,
+                }),
                 length: Some(IntegerProperty {
                     r#type: "integer",
                     minimum: 1,
@@ -170,29 +269,51 @@ pub fn App() -> JSX::Element {
                 }),
                 ..Properties::default()
             },
-            vec![],
+            vec!["commandId", "expectedRevision"],
         ),
         annotations: Annotations {
             read_only_hint: false,
         },
         execute: move |input: Option<&Unknown>, options: ExecutionOptions| {
-            if options.signal.aborted() {
-                ToolResponse::text("Request cancelled.", true)
-            } else if valid_keys(input, &[], &["length"]) {
-                let length = if input.is_some_and(|value| object::has_own(value, "length")) {
-                    integer(input, "length")
-                } else {
-                    Some(20)
-                };
-                match length {
-                    Some(length) => response(shuffle_session.shuffle(length as usize)),
-                    None => {
-                        ToolResponse::text("Shuffle length must be an integer from 1 to 100.", true)
+            let shuffle_session = Rc::clone(&shuffle_session);
+            promise(async move {
+                if options.signal.aborted() {
+                    ToolResponse::text("Request cancelled.", true)
+                } else if valid_keys(input, &["commandId", "expectedRevision"], &["length"]) {
+                    let length = if input.is_some_and(|value| object::has_own(value, "length")) {
+                        integer(input, "length")
+                    } else {
+                        Some(20)
+                    };
+                    match (
+                        length,
+                        integer(input, "expectedRevision"),
+                        classify(js::get(input, "commandId")),
+                    ) {
+                        (Some(length), Some(revision), Kind::String(id)) => response(
+                            shuffle_session
+                                .submit(
+                                    Command {
+                                        command_id: id.into(),
+                                        expected_revision: revision,
+                                        action: Action::Shuffle(length as usize),
+                                    },
+                                    Some(options.signal),
+                                )
+                                .await,
+                        ),
+                        _ => ToolResponse::text(
+                            "Shuffle length must be an integer from 1 to 100.",
+                            true,
+                        ),
                     }
+                } else {
+                    ToolResponse::text(
+                        "Expected commandId, expectedRevision and optional length.",
+                        true,
+                    )
                 }
-            } else {
-                ToolResponse::text("Expected {} or {\"length\":20}.", true)
-            }
+            })
         },
     });
     let view_tool = use_web_mcp(ToolOptions {
@@ -212,27 +333,31 @@ pub fn App() -> JSX::Element {
             read_only_hint: false,
         },
         execute: move |input: Option<&Unknown>, options: ExecutionOptions| {
-            if options.signal.aborted() {
-                ToolResponse::text("Request cancelled.", true)
-            } else if valid_keys(input, &["view"], &[]) {
-                match classify(js::get(input, "view")) {
-                    Kind::String("front") => {
-                        change_view("front");
-                        ToolResponse::text("Camera view: front.", false)
+            promise(async move {
+                if options.signal.aborted() {
+                    ToolResponse::text("Request cancelled.", true)
+                } else if valid_keys(input, &["view"], &[]) {
+                    match classify(js::get(input, "view")) {
+                        Kind::String("front") => {
+                            change_view("front");
+                            ToolResponse::text("Camera view: front.", false)
+                        }
+                        Kind::String("perspective") => {
+                            change_view("perspective");
+                            ToolResponse::text("Camera view: perspective.", false)
+                        }
+                        _ => ToolResponse::text("View must be front or perspective.", true),
                     }
-                    Kind::String("perspective") => {
-                        change_view("perspective");
-                        ToolResponse::text("Camera view: perspective.", false)
-                    }
-                    _ => ToolResponse::text("View must be front or perspective.", true),
+                } else {
+                    ToolResponse::text("Expected exactly one view property.", true)
                 }
-            } else {
-                ToolResponse::text("Expected exactly one view property.", true)
-            }
+            })
         },
     });
     let tools = [state_tool, move_tool, shuffle_tool, view_tool];
-    let agent_status = if tools.iter().any(|tool| tool.error.is_some()) {
+    let agent_status = if !session.ready() {
+        "Session not ready"
+    } else if tools.iter().any(|tool| tool.error.is_some()) {
         "Registration failed"
     } else if tools.iter().all(|tool| tool.registered) {
         "Ready · 4 tools"
@@ -242,6 +367,8 @@ pub fn App() -> JSX::Element {
         "Not available"
     };
     let shuffle_button = Rc::clone(&session);
+    let sharing_session = Rc::clone(&session);
+    let ready = session.ready();
     let colors: Vec<char> = snapshot.facelets.chars().collect();
 
     jsx! {
@@ -269,7 +396,7 @@ pub fn App() -> JSX::Element {
                         <p className="eyebrow">{"ONE CUBE. EVERY POSSIBILITY."}</p>
                         <h2>{"Your move."}</h2>
                         <div className="game-status" role="status" data-testid="cube-status">{if snapshot.solved { "Solved" } else { "In progress" }}<span>{format!("{} moves", snapshot.move_count)}</span></div>
-                        <button className="shuffle-button" type="button" onClick={move |_| { set_problem.set(shuffle_button.shuffle(20).err()); }}>{"Shuffle cube ↗"}</button>
+                        <button className="shuffle-button" type="button" disabled={!ready} onClick={move |_| { let session = Rc::clone(&shuffle_button); spawn(Box::new(async move { let revision = session.snapshot().revision; set_problem.set(session.submit(Command { command_id: window.crypto().random_uuid(), expected_revision: revision, action: Action::Shuffle(20) }, None).await.err()); })); }}>{"Shuffle cube ↗"}</button>
                         <div className="move-controls" role="group" aria-label="Face turns">
                             {FACES.into_iter().map(|face| {
                                 jsx! { <div className="move-column" key={face.to_string()}>
@@ -277,8 +404,9 @@ pub fn App() -> JSX::Element {
                                         let movement = format!("{face}{suffix}");
                                         let command = movement.clone();
                                         let session = Rc::clone(&session);
-                                        jsx! { <button type="button" key={movement.clone()} aria-label={format!("Turn {movement}")} onClick={move |_| {
-                                            set_problem.set(session.apply(&command, session.snapshot().revision).err());
+                                        jsx! { <button type="button" key={movement.clone()} aria-label={format!("Turn {movement}")} disabled={!ready} onClick={move |_| {
+                                            let session = Rc::clone(&session); let command = command.clone();
+                                            spawn(Box::new(async move { let revision = session.snapshot().revision; set_problem.set(session.submit(Command { command_id: window.crypto().random_uuid(), expected_revision: revision, action: Action::Moves(command) }, None).await.err()); }));
                                         }}>{movement}</button> }
                                     }).collect::<Vec<_>>()}
                                 </div> }
@@ -292,7 +420,16 @@ pub fn App() -> JSX::Element {
                             <div><dt>{"WebMCP"}</dt><dd data-testid="agent-status">{agent_status}</dd></div>
                         </dl>
                         <div className="agent-note"><span className="eyebrow">{"INVITE AN AGENT"}</span><p>{"“Shuffle the cube, inspect its faces, then solve it using legal moves.”"}</p><small>{"Requires WebMCP and a compatible agent. Your agent chooses the solution; the app checks every move."}</small></div>
-                        <p className="scope-note">{"Local session. Reload starts fresh. Saved games and multiplayer are coming next."}</p>
+                        <button className="share-button" type="button" disabled={!ready} onClick={move |_| {
+                            let session = Rc::clone(&sharing_session);
+                            spawn(Box::new(async move {
+                                match session.read().await {
+                                    Ok(_) => { let copied = settle(window.navigator().clipboard().write_text(&window.location().href())).await.is_ok(); set_sharing.set(if copied { "Link copied" } else { "Copy the address bar to share" }); },
+                                    Err(error) => set_problem.set(Some(error)),
+                                }
+                            }));
+                        }}>{*sharing}</button>
+                        <p className="scope-note">{"Share the address to challenge someone with this exact position and zero moves. Saved play resumes on reload when storage is available. Multiplayer is coming next."}</p>
                     </aside>
                 </section>
                 <section className="cube-net" aria-label="All six cube faces" data-revision={snapshot.revision.to_string()}>

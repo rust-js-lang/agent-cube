@@ -4,25 +4,29 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
-const source = readFileSync(join(root, "crates/cube-core/src/lib.rs"), "utf8");
 const workspace = Bun.TOML.parse(readFileSync(join(root, "Cargo.toml"), "utf8")) as { workspace: { package: Record<string, unknown> } };
 const manifest = readFileSync(join(root, "crates/cube-core/Cargo.toml"), "utf8")
   .replace(/^(\w+)\.workspace = true$/gm, (_, name) => `${name} = ${JSON.stringify(workspace.workspace.package[name])}`)
   .replace(/\n\[lints\]\nworkspace = true\n?/, "\n");
 const cases = [
-  { name: "reversed-clockwise", find: "axis, -normal[axis]", replacement: "axis, normal[axis]" },
-  { name: "stale-revision-accepted", find: "expected_revision != self.revision", replacement: "false" },
-  { name: "truncated-batch-accepted", find: "let moves = parse_moves(text)?;", replacement: "let moves = parse_moves(text.split_whitespace().next().unwrap_or(\"\")).unwrap_or_default();" },
+  { file: "lib.rs", name: "reversed-clockwise", find: "axis, -normal[axis]", replacement: "axis, normal[axis]" },
+  { file: "lib.rs", name: "stale-revision-accepted", find: "expected_revision != self.revision", replacement: "false" },
+  { file: "lib.rs", name: "truncated-batch-accepted", find: "let moves = parse_moves(text)?;", replacement: "let moves = parse_moves(text.split_whitespace().next().unwrap_or(\"\")).unwrap_or_default();" },
+  { file: "lib.rs", name: "impossible-permutation-accepted", find: "parity(&corners.permutation) != parity(&edges.permutation)", replacement: "false" },
+  { file: "lib.rs", name: "impossible-corner-twist-accepted", find: "corners.orientation_sum % 3 != 0", replacement: "false" },
+  { file: "lib.rs", name: "impossible-edge-flip-accepted", find: "edges.orientation_sum % 2 != 0", replacement: "false" },
+  { file: "journal.rs", name: "retry-not-recognized", find: "entry.command.command_id == command.command_id", replacement: "false" },
 ];
 
 await Promise.all(cases.map(async mutation => {
+  const source = readFileSync(join(root, "crates/cube-core/src", mutation.file), "utf8");
   if (!source.includes(mutation.find)) throw new Error(`Mutation no longer applies: ${mutation.name}`);
   const directory = mkdtempSync(join(tmpdir(), `agent-cube-${mutation.name}-`));
   try {
     cpSync(join(root, "crates/cube-core/src"), join(directory, "src"), { recursive: true });
     cpSync(join(root, "rust-toolchain.toml"), join(directory, "rust-toolchain.toml"));
     writeFileSync(join(directory, "Cargo.toml"), manifest);
-    writeFileSync(join(directory, "src/lib.rs"), source.replaceAll(mutation.find, mutation.replacement));
+    writeFileSync(join(directory, "src", mutation.file), source.replaceAll(mutation.find, mutation.replacement));
     const child = Bun.spawn(["cargo", "test", "--offline", "--quiet"], {
       cwd: directory,
       env: { ...process.env, RUSTC_WRAPPER: Bun.which("sccache") ?? process.env.RUSTC_WRAPPER },

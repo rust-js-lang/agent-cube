@@ -3,7 +3,7 @@
 import {
   FACES,
   Session,
-  cubeDefault,
+  cubeDefault_default,
   snapshotSerialize_serialize,
 } from "../../cube-core/src/lib.js";
 import { useEffect, useRef, useState } from "react";
@@ -16,6 +16,7 @@ import { useWebMCP } from "use-webmcp-tool";
 import { ToolResponse } from "./webmcp.js";
 import {
   $catchUnwind,
+  $catchable,
   $copyOf,
   $debugJsonError,
   $f64ToInt,
@@ -23,6 +24,7 @@ import {
   $lent,
   $settle,
   $toJson,
+  $try,
   $unwrap,
   $unwrapOk,
 } from "@rust-js/std";
@@ -78,29 +80,84 @@ function schema(properties, required) {
 
 export function App() {
   const [snapshot, setSnapshot] = useState(() =>
-    Session.snapshot({ cube: cubeDefault.default(), revision: 0, moveCount: 0 }),
+    Session.snapshot({ cube: cubeDefault_default(), revision: 0, moveCount: 0 }),
   );
-  const session = useRef(LocalSession.new(setSnapshot)).current;
-  const [view, setView] = useState("perspective");
-  const [storage, setStorage] = useState("Checking…");
+  const [storage, setStorage] = useState("Loading saved session…");
+  const session = useRef(LocalSession.new(setSnapshot, setStorage)).current;
+  const [view, setView] = useState(() => {
+    const result = $catchUnwind(() => {
+      const result = $try(() => window.localStorage);
+      const option = result.TAG === "Ok" ? result._0 : undefined;
+      return option?.getItem("agent-cube.camera");
+    });
+    const option = result.TAG === "Ok" ? result._0 : undefined;
+    const option$1 = option != null && option === "front" ? option : undefined;
+    return option$1 != null ? "front" : "perspective";
+  });
   const [problem, setProblem] = useState(undefined);
+  const [sharing, setSharing] = useState("Copy challenge link");
   function changeView(next) {
+    try {
+      const localStorage = $try(() => window.localStorage);
+      if (localStorage.TAG === "Ok") {
+        const storage = localStorage._0;
+        try {
+          storage.setItem("agent-cube.camera", next);
+        } catch {}
+      }
+    } catch (error) {
+      $catchable(error);
+    }
     flushSync(() => setView(next));
   }
 
   useEffect(() => {
     (async () => {
-      // Availability only; persisted sessions are the next milestone.
-      const catchUnwind = $catchUnwind(() => window.indexedDB.databases());
-      let available;
-      if (catchUnwind.TAG === "Ok") {
-        const request = catchUnwind._0;
-        available = (await $settle(request)).TAG === "Ok";
-      } else {
-        available = false;
+      const value = await LocalSession.initialize(session);
+      if (value.TAG === "Err") {
+        setStorage("Recovery blocked");
+        setProblem(value._0);
       }
-      setStorage(available ? "Available" : "Unavailable");
     })();
+    const result = $catchUnwind(() => new BroadcastChannel("agent-cube.practice"));
+    const channel = result.TAG === "Ok" ? result._0 : undefined;
+    if (channel != null) {
+      channel.addEventListener("message", () => {
+        (async () => {
+          const value = await LocalSession.read(session);
+          if (value.TAG === "Err") {
+            setProblem(value._0);
+          }
+        })();
+      });
+    }
+    LocalSession.setChannel(session, channel);
+    function focus() {
+      (async () => {
+        if (LocalSession.ready(session)) {
+          const value = await LocalSession.read(session);
+          if (value.TAG === "Err") {
+            setProblem(value._0);
+          }
+        }
+      })();
+    }
+    window.addEventListener("focus", focus);
+    function hash() {
+      (async () => {
+        const result = await LocalSession.loadLink(session);
+        setProblem(result.TAG === "Err" ? result._0 : undefined);
+      })();
+    }
+    window.addEventListener("hashchange", hash);
+    return () => {
+      window.removeEventListener("focus", focus);
+      window.removeEventListener("hashchange", hash);
+      LocalSession.setChannel(session);
+      if (channel != null) {
+        channel.close();
+      }
+    };
   }, []);
 
   const stateTool = useWebMCP({
@@ -110,21 +167,29 @@ export function App() {
     inputSchema: schema({}, []),
     annotations: { readOnlyHint: true },
     execute(input, options) {
-      if (options.signal.aborted) {
-        return ToolResponse.text("Request cancelled.", true, { into: (s) => s });
-      } else if (validKeys(input, [], [])) {
-        return response({ TAG: "Ok", _0: LocalSession.snapshot(session) });
-      } else {
-        return ToolResponse.text("Expected an empty object: {}.", true, { into: (s) => s });
-      }
+      const captured = options.signal;
+      return (async () => {
+        if (captured.aborted) {
+          return ToolResponse.text("Request cancelled.", true, { into: (s) => s });
+        } else if (validKeys(input, [], [])) {
+          return response(await LocalSession.read(session));
+        } else {
+          return ToolResponse.text("Expected an empty object: {}.", true, { into: (s) => s });
+        }
+      })();
     },
   });
   const moveTool = useWebMCP({
     name: "apply_moves",
     description:
-      "Apply 1–128 legal moves atomically to solve the cube. Notation: U D L R F B clockwise viewed from outside, ' for inverse, 2 for half turn; separate moves with spaces. Pass expectedRevision from get_cube_state. Invalid or stale commands change nothing. Returns the committed state after the visible cube updates.",
+      "Apply 1–128 legal moves atomically to solve the cube. Notation: U D L R F B clockwise viewed from outside, ' for inverse, 2 for half turn; separate moves with spaces. Pass expectedRevision from get_cube_state and a unique commandId (1–128 ASCII characters). Retry the exact request with the same ID after a lost response; a retry returns its original receipt without repeating moves. Receipt revision can precede the current state; read again to plan new moves. Invalid or stale commands change nothing. Returns the committed state after the visible cube updates.",
     inputSchema: schema(
       {
+        commandId: {
+          type: "string",
+          description: "Unique command ID; reuse only for an identical retry",
+          maxLength: 128,
+        },
         moves: {
           type: "string",
           description: "Space-separated Singmaster moves, e.g. R U R' U'",
@@ -136,61 +201,111 @@ export function App() {
           maximum: 4294967295,
         },
       },
-      ["moves", "expectedRevision"],
+      ["moves", "expectedRevision", "commandId"],
     ),
     annotations: { readOnlyHint: false },
     execute(input, options) {
-      if (options.signal.aborted) {
-        return ToolResponse.text("Request cancelled.", true, { into: (s) => s });
-      } else if (validKeys(input, ["moves", "expectedRevision"], [])) {
-        const moves = input.moves;
-        const revision = integer(input, "expectedRevision");
-        if (typeof moves === "string" && revision != null && Array.from(moves).length <= 1024) {
-          return response(LocalSession.apply(session, moves, revision));
+      const captured = options.signal;
+      return (async () => {
+        if (captured.aborted) {
+          return ToolResponse.text("Request cancelled.", true, { into: (s) => s });
+        } else if (validKeys(input, ["moves", "expectedRevision", "commandId"], [])) {
+          const moves = input.moves;
+          const revision = integer(input, "expectedRevision");
+          const id = input.commandId;
+          if (
+            typeof moves === "string" &&
+            revision != null &&
+            typeof id === "string" &&
+            Array.from(moves).length <= 1024
+          ) {
+            return response(
+              await LocalSession.submit(
+                session,
+                {
+                  commandId: id,
+                  expectedRevision: revision,
+                  action: { TAG: "Moves", _0: moves },
+                },
+                captured,
+              ),
+            );
+          }
+          return ToolResponse.text(
+            "Expected moves as a string and expectedRevision as a nonnegative integer.",
+            true,
+            { into: (s) => s },
+          );
+        } else {
+          return ToolResponse.text(
+            "Expected exactly moves, expectedRevision and commandId. Read the state first.",
+            true,
+            { into: (s) => s },
+          );
         }
-        return ToolResponse.text(
-          "Expected moves as a string and expectedRevision as a nonnegative integer.",
-          true,
-          { into: (s) => s },
-        );
-      } else {
-        return ToolResponse.text(
-          "Expected exactly moves and expectedRevision. Read the state first.",
-          true,
-          { into: (s) => s },
-        );
-      }
+      })();
     },
   });
   const shuffleTool = useWebMCP({
     name: "shuffle_cube",
     description:
-      "Start a new local challenge from the solved cube with a legal random-move shuffle. Optional length is 1–100, default 20. Clears the move count, advances the revision, and returns all stickers. The scramble sequence and seed are not exposed. This is not uniform random-state sampling.",
+      "Start a new local challenge from the solved cube with a legal random-move shuffle. Supply a unique commandId and expectedRevision from get_cube_state. Retry identical requests with the same ID to recover the original result. Optional length is 1–100, default 20. Clears the move count, advances the revision, and returns all stickers. The scramble sequence and seed are not exposed. This is not uniform random-state sampling.",
     inputSchema: schema(
       {
+        commandId: {
+          type: "string",
+          description: "Unique command ID; reuse only for an identical retry",
+          maxLength: 128,
+        },
+        expectedRevision: {
+          type: "integer",
+          minimum: 0,
+          maximum: 4294967295,
+        },
         length: {
           type: "integer",
           minimum: 1,
           maximum: 100,
         },
       },
-      [],
+      ["commandId", "expectedRevision"],
     ),
     annotations: { readOnlyHint: false },
     execute(input, options) {
-      if (options.signal.aborted) {
-        return ToolResponse.text("Request cancelled.", true, { into: (s) => s });
-      } else if (validKeys(input, [], ["length"])) {
-        const length =
-          input != null && Object.hasOwn(input, "length") ? integer(input, "length") : 20;
-        return length != null
-          ? response(LocalSession.shuffle(session, length))
-          : ToolResponse.text("Shuffle length must be an integer from 1 to 100.", true, {
+      const captured = options.signal;
+      return (async () => {
+        if (captured.aborted) {
+          return ToolResponse.text("Request cancelled.", true, { into: (s) => s });
+        } else if (validKeys(input, ["commandId", "expectedRevision"], ["length"])) {
+          const length =
+            input != null && Object.hasOwn(input, "length") ? integer(input, "length") : 20;
+          const revision = integer(input, "expectedRevision");
+          const id = input.commandId;
+          if (length != null && revision != null && typeof id === "string") {
+            return response(
+              await LocalSession.submit(
+                session,
+                {
+                  commandId: id,
+                  expectedRevision: revision,
+                  action: { TAG: "Shuffle", _0: length },
+                },
+                captured,
+              ),
+            );
+          } else {
+            return ToolResponse.text("Shuffle length must be an integer from 1 to 100.", true, {
               into: (s) => s,
             });
-      } else {
-        return ToolResponse.text('Expected {} or {"length":20}.', true, { into: (s) => s });
-      }
+          }
+        } else {
+          return ToolResponse.text(
+            "Expected commandId, expectedRevision and optional length.",
+            true,
+            { into: (s) => s },
+          );
+        }
+      })();
     },
   });
   const viewTool = useWebMCP({
@@ -208,38 +323,46 @@ export function App() {
     ),
     annotations: { readOnlyHint: false },
     execute(input, options) {
-      if (options.signal.aborted) {
-        return ToolResponse.text("Request cancelled.", true, { into: (s) => s });
-      } else if (validKeys(input, ["view"], [])) {
-        switch (input.view) {
-          case "front":
-            changeView("front");
-            return ToolResponse.text("Camera view: front.", false, { into: (s) => s });
-          case "perspective":
-            changeView("perspective");
-            return ToolResponse.text("Camera view: perspective.", false, { into: (s) => s });
-          default:
-            return ToolResponse.text("View must be front or perspective.", true, {
-              into: (s) => s,
-            });
+      const captured = options.signal;
+      return (async () => {
+        if (captured.aborted) {
+          return ToolResponse.text("Request cancelled.", true, { into: (s) => s });
+        } else if (validKeys(input, ["view"], [])) {
+          switch (input.view) {
+            case "front":
+              changeView("front");
+              return ToolResponse.text("Camera view: front.", false, { into: (s) => s });
+            case "perspective":
+              changeView("perspective");
+              return ToolResponse.text("Camera view: perspective.", false, { into: (s) => s });
+            default:
+              return ToolResponse.text("View must be front or perspective.", true, {
+                into: (s) => s,
+              });
+          }
+        } else {
+          return ToolResponse.text("Expected exactly one view property.", true, { into: (s) => s });
         }
-      } else {
-        return ToolResponse.text("Expected exactly one view property.", true, { into: (s) => s });
-      }
+      })();
     },
   });
   const tools = [stateTool, moveTool, shuffleTool, viewTool];
-  const value = $iter(tools);
   let agentStatus;
-  if ($lent(value).some((tool) => tool.error != null)) {
-    agentStatus = "Registration failed";
+  if (!LocalSession.ready(session)) {
+    agentStatus = "Session not ready";
   } else {
-    agentStatus = tools.every((tool) => tool.registered)
-      ? "Ready · 4 tools"
-      : tools.every((tool) => tool.supported)
-        ? "Connecting…"
-        : "Not available";
+    const value = $iter(tools);
+    if ($lent(value).some((tool) => tool.error != null)) {
+      agentStatus = "Registration failed";
+    } else {
+      agentStatus = tools.every((tool) => tool.registered)
+        ? "Ready · 4 tools"
+        : tools.every((tool) => tool.supported)
+          ? "Connecting…"
+          : "Not available";
+    }
   }
+  const ready = LocalSession.ready(session);
   const colors = Array.from(snapshot.facelets);
 
   return (
@@ -307,8 +430,14 @@ export function App() {
             <button
               className="shuffle-button"
               type="button"
-              onClick={() => {
-                const result = LocalSession.shuffle(session, 20);
+              disabled={!ready}
+              onClick={async () => {
+                const revision = LocalSession.snapshot(session).revision;
+                const result = await LocalSession.submit(session, {
+                  commandId: window.crypto.randomUUID(),
+                  expectedRevision: revision,
+                  action: { TAG: "Shuffle", _0: 20 },
+                });
                 setProblem(result.TAG === "Err" ? result._0 : undefined);
               }}
             >
@@ -325,12 +454,14 @@ export function App() {
                         type="button"
                         key={movement}
                         aria-label={`Turn ${movement}`}
-                        onClick={() => {
-                          const result = LocalSession.apply(
-                            session,
-                            command,
-                            LocalSession.snapshot(session).revision,
-                          );
+                        disabled={!ready}
+                        onClick={async () => {
+                          const revision = LocalSession.snapshot(session).revision;
+                          const result = await LocalSession.submit(session, {
+                            commandId: window.crypto.randomUUID(),
+                            expectedRevision: revision,
+                            action: { TAG: "Moves", _0: command },
+                          });
                           setProblem(result.TAG === "Err" ? result._0 : undefined);
                         }}
                       >
@@ -365,8 +496,27 @@ export function App() {
                 checks every move.
               </small>
             </div>
+            <button
+              className="share-button"
+              type="button"
+              disabled={!ready}
+              onClick={async () => {
+                const value = await LocalSession.read(session);
+                if (value.TAG === "Ok") {
+                  const copied =
+                    (await $settle(window.navigator.clipboard.writeText(window.location.href)))
+                      .TAG === "Ok";
+                  setSharing(copied ? "Link copied" : "Copy the address bar to share");
+                } else {
+                  setProblem(value._0);
+                }
+              }}
+            >
+              {sharing}
+            </button>
             <p className="scope-note">
-              Local session. Reload starts fresh. Saved games and multiplayer are coming next.
+              Share the address to challenge someone with this exact position and zero moves. Saved
+              play resumes on reload when storage is available. Multiplayer is coming next.
             </p>
           </aside>
         </section>

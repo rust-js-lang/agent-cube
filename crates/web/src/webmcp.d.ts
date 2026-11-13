@@ -18,6 +18,7 @@ export interface Schema {
 export interface Properties {
     view?: ViewProperty | undefined;
     moves?: TextProperty | undefined;
+    commandId?: TextProperty | undefined;
     expectedRevision?: IntegerProperty | undefined;
     length?: IntegerProperty | undefined;
 }

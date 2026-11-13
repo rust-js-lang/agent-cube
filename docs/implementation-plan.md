@@ -7,7 +7,7 @@ at each phase; do not postpone correctness behind presentation work.
 ## 1. Bootstrap and prove the browser boundary
 
 Implemented locally on 2026-11-13. The app builds from a pinned rust-js
-submodule; four production-browser tests cover the Rust UI, Three.js, IndexedDB,
+submodule; the production-browser suite covers the Rust UI, Three.js, IndexedDB,
 and Playwright WebMCP. Codex separately discovered and invoked a live tool
 through Playwright CLI and checked visible state. See [test evidence](../TESTS.md).
 GitHub Pages builds and deploys on pushes to main; tests run locally.
@@ -34,15 +34,20 @@ Codex also shuffled and solved a 20-move cube through the built-in browser tools
   solved checks, and reproducible seeded scrambles.
 - Add known fixtures, inverse/four-turn laws, invariants, and generated sequences.
 - Compare identical inputs through native Rust and generated JavaScript.
-- Render all six faces, with keyboard/buttons and a move history.
+- Render all six faces with buttons. Keyboard controls and a human-facing history remain presentation work in milestone 4.
 
 Exit: a human can scramble and solve a cube; independent expected fixtures and
 cross-target comparisons pass.
 
 ## 3. Standalone session, persistence, and agent play
 
-The in-memory referee and agent tools are implemented. IndexedDB persistence,
-command receipts, durable replay, and reload recovery remain outstanding.
+Implemented locally on 2026-11-13: one ordered IndexedDB acceptance transaction,
+versioned replay records, stable command IDs and original retry receipts, reload
+recovery, two-tab serialization/refresh, and localStorage camera preferences.
+Shared URLs transfer validated positions with zero moves and preserve existing
+saves on invalid input. Storage denial is explicit temporary play. The suite
+checks aborted commits, newer formats, collisions and lost-response retries.
+See [the persistence decision](decisions/0003-persisted-practice-and-shared-links.md).
 
 
 - Define commands, snapshots, accepted events, revision checks, and receipts.

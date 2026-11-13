@@ -1,6 +1,6 @@
 # 0001. Exact local cube rules and an observable agent interface
 
-Status: implemented.
+Status: implemented. Retry behavior is superseded by ADR 0003.
 
 The cube engine lives in a browser-independent Rust crate. Eight corners and
 twelve edges carry integer positions and colored sticker normals. Centers are

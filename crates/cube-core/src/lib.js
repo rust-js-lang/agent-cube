@@ -9,10 +9,14 @@ import {
   $index,
   $iter,
   $lazyChain,
+  $lazyRange,
   $lent,
+  $mapEnds,
   $next,
   $position,
+  $rem,
   $roomFor,
+  $slice,
   $unwrap,
 } from "@rust-js/std";
 
@@ -129,7 +133,7 @@ function rotate([x, y, z], axis, direction) {
 }
 
 export const cubeDefault = { default: cubeDefault_default };
-function cubeDefault_default() {
+export function cubeDefault_default() {
   const corners = [];
   const edges = [];
   for (let x = -1; x <= 1; x++) {
@@ -143,17 +147,17 @@ function cubeDefault_default() {
           );
           const value = $index(position, axis) === $index(normal, axis);
           const value$1 = {
-            normal,
+            normal: normal.slice(),
             color: $index(FACES, face),
           };
           return value ? value$1 : undefined;
         }).filter((item) => item != null);
         switch (stickers.length) {
           case 3:
-            corners.push({ position, stickers });
+            corners.push({ position: position.slice(), stickers });
             break;
           case 2:
-            edges.push({ position, stickers });
+            edges.push({ position: position.slice(), stickers });
             break;
         }
       }
@@ -162,7 +166,139 @@ function cubeDefault_default() {
   return { corners, edges };
 }
 
+// Cyclic face order distinguishes a physical corner from its mirror image.
+const CORNER_FACES = [
+  [0, 1, 2],
+  [0, 2, 4],
+  [0, 4, 5],
+  [0, 5, 1],
+  [3, 2, 1],
+  [3, 4, 2],
+  [3, 5, 4],
+  [3, 1, 5],
+];
+const EDGE_FACES = [
+  [0, 1],
+  [0, 2],
+  [0, 4],
+  [0, 5],
+  [3, 1],
+  [3, 2],
+  [3, 4],
+  [3, 5],
+  [2, 1],
+  [2, 4],
+  [5, 4],
+  [5, 1],
+];
+
+function decodePieces(values, layout, N) {
+  const result = {
+    pieces: [],
+    permutation: [],
+    orientationSum: 0,
+  };
+  for (let j = 0; j < layout.length; j++) {
+    const faces = layout[j];
+    const position = [0, 0, 0];
+    for (let k = 0; k < faces.length; k++) {
+      const face = faces[k];
+      for (let axis = 0; axis < position.length; axis++) {
+        if (!(face < 6)) {
+          throw new Error(`index out of bounds: the len is 6 but the index is ${face}`);
+        }
+        const value = $index(NORMALS[face], axis);
+        position[axis] = ((position[axis] + value) << 24) >> 24;
+      }
+    }
+    const stickers = Array.from(
+      $mapEnds($iter(faces), (face) => {
+        const cell = $unwrap(
+          $lazyRange(0, 9).find((cell) => $eq(faceletPosition(face, cell), position)),
+          "piece facelet coordinate",
+        );
+        return {
+          normal: $index(NORMALS, face),
+          color: $index(values, (((face * 9) >>> 0) + cell) >>> 0),
+        };
+      }),
+    );
+    const findMap = $lent(layout.entries())
+      .map(([piece, colors]) => {
+        const find = $lazyRange(0, N).find((orientation) =>
+          $lazyRange(0, N).every(
+            (index) =>
+              $index(stickers, $rem((index + orientation) >>> 0, N) >>> 0).color ===
+              $index(FACES, $index(colors, index)),
+          ),
+        );
+        return find != null ? [piece, find] : undefined;
+      })
+      .find((item) => item != null);
+    const result$1 =
+      findMap != null
+        ? { TAG: "Ok", _0: findMap }
+        : { TAG: "Err", _0: "The link contains an impossible or mirrored piece." };
+    if (result$1.TAG === "Err") {
+      return result$1;
+    }
+    const identity = result$1._0;
+    if (result.permutation.includes(identity[0])) {
+      return { TAG: "Err", _0: "The link repeats a cube piece." };
+    }
+    result.permutation.push(identity[0]);
+    result.orientationSum = (result.orientationSum + identity[1]) >>> 0;
+    result.pieces.push({ position: position.slice(), stickers });
+  }
+  return { TAG: "Ok", _0: result };
+}
+
+function parity(permutation) {
+  return (
+    permutation
+      .map((value, i) => $slice(permutation, (i + 1) >>> 0).filter((other) => other < value).length)
+      .reduce((a, b) => (a + b) >>> 0, 0) % 2
+  );
+}
+
 export const Cube = {
+  /** Parse a fixed-center URFDLB position and prove it is reachable by legal turns. */
+  fromFacelets(text) {
+    const values = Array.from(text);
+    if (
+      values.length !== 54 ||
+      FACES.some((face) => values.filter((value) => value === face).length !== 9)
+    ) {
+      return {
+        TAG: "Err",
+        _0: "A cube link must contain exactly nine stickers of each URFDLB color.",
+      };
+    }
+    if (FACES.some((color, face) => $index(values, (((face * 9) >>> 0) + 4) >>> 0) !== color)) {
+      return { TAG: "Err", _0: "The link's center colors must use the fixed URFDLB frame." };
+    }
+    const result = decodePieces(values, CORNER_FACES, 3);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const corners = result._0;
+    const result$1 = decodePieces(values, EDGE_FACES, 2);
+    if (result$1.TAG === "Err") {
+      return result$1;
+    }
+    const edges = result$1._0;
+    return corners.orientationSum % 3 !== 0 ||
+      edges.orientationSum % 2 !== 0 ||
+      parity(corners.permutation) !== parity(edges.permutation)
+      ? { TAG: "Err", _0: "The link has an impossible twist, flip, or piece permutation." }
+      : {
+          TAG: "Ok",
+          _0: {
+            corners: corners.pieces,
+            edges: edges.pieces,
+          },
+        };
+  },
   apply(cube, movement) {
     const normal = $index(NORMALS, movement.face);
     const axis = $unwrap(
@@ -174,9 +310,17 @@ export const Cube = {
     for (let i = 0; i < end; i++) {
       for (const piece of $lazyChain($iter(cube.corners), $iter(cube.edges))) {
         if ($index(piece.position, axis) === $index(normal, axis)) {
-          piece.position = rotate(piece.position, axis, (-$index(normal, axis) << 24) >> 24);
+          piece.position = rotate(
+            piece.position.slice(),
+            axis,
+            (-$index(normal, axis) << 24) >> 24,
+          );
           for (const sticker of piece.stickers) {
-            sticker.normal = rotate(sticker.normal, axis, (-$index(normal, axis) << 24) >> 24);
+            sticker.normal = rotate(
+              sticker.normal.slice(),
+              axis,
+              (-$index(normal, axis) << 24) >> 24,
+            );
           }
         }
       }
@@ -295,6 +439,30 @@ export const Session = {
       session.moveCount = count;
       return { TAG: "Ok", _0: Session.snapshot(session) };
     }
+  },
+
+  load(session, facelets, expectedRevision) {
+    if (expectedRevision !== session.revision) {
+      return { TAG: "Err", _0: "Stale revision. Read the cube again." };
+    }
+    const result = Cube.fromFacelets(facelets);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const cube = result._0;
+    const checkedAdd = $checked(session.revision + 1, 0, 4294967295);
+    const result$1 =
+      checkedAdd != null
+        ? { TAG: "Ok", _0: checkedAdd }
+        : { TAG: "Err", _0: "Session revision exhausted." };
+    if (result$1.TAG === "Err") {
+      return result$1;
+    }
+    const revision = result$1._0;
+    session.cube = cube;
+    session.revision = revision;
+    session.moveCount = 0;
+    return { TAG: "Ok", _0: Session.snapshot(session) };
   },
 
   shuffle(session, seed, length) {

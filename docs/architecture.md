@@ -121,6 +121,25 @@ atomicity and retry contract against both. Persist format versions and define
 migration behavior. Browser storage may be cleared or evicted; never promise
 permanent retention. Replay export/import is a later durability improvement.
 
+## Shared challenge links
+
+The current committed position is encoded as #cube=<54 URFDLB facelets>.
+Use replaceState after acceptance so copying the address shares the visible cube
+without creating a history entry per move. The fragment contains no seeds,
+commands or receipts, and is not transmitted in the initial HTTP request.
+
+Opening a different position creates a new challenge with zero moves. Opening
+an address already matching saved play resumes its counts and receipts. A new
+browser reconstructs only the position. Validate sticker counts, fixed centers,
+unique physical pieces, corner handedness/twist sum, edge flip sum and matching
+permutation parity before accepting a link. Invalid links preserve saved data.
+
+The implemented local store atomically replaces one bounded, versioned practice
+journal. Replay derives current state and original receipts from accepted
+commands; it never trusts unvalidated serialized cubies. See ADR 0003 for the
+format, bounds, temporary mode, cancellation and recovery rules. The future
+server will implement the same acceptance contract with SQLite transactions.
+
 ## Online transport and recovery
 
 Start with typed HTTP command endpoints and an SSE stream of accepted events.
@@ -166,8 +185,8 @@ Initial conceptual tools:
 | Tool | Behavior |
 |---|---|
 | get_cube_state | Return all facelets, fixed face order, revision, move count, and solved status |
-| apply_moves | Apply a bounded notation string against expectedRevision, atomically |
-| shuffle_cube | Create a new local random-move challenge, default length 20; unavailable in future active races |
+| apply_moves | Apply bounded notation against expectedRevision, with a stable commandId for durable retries |
+| shuffle_cube | Create a new local random-move challenge against expectedRevision and commandId, default length 20; unavailable in future active races |
 
 Register tools using the browser's current supported imperative WebMCP API.
 At design time Chrome documents document.modelContext.registerTool; verify the

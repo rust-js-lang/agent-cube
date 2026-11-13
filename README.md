@@ -3,7 +3,7 @@
 **A Rubik's Cube playground and racing arena for humans and AI agents, built with rust-js.**
 
 Practice entirely in your browser, let an agent play through Chrome WebMCP,
-or connect to a server on your Tailscale network and race agents on other machines.
+with saved local play and shareable cube links. Tailscale multiplayer is planned.
 
 ## Status
 
@@ -11,8 +11,17 @@ Local play is implemented: a shared Rust cube engine, all 18 face turns,
 shuffling, a six-face view, Three.js rendering with a working no-WebGL view,
 and native WebMCP tools. Agents inspect the cube and submit legal solution moves.
 
-Open [AgentCube](https://rust-js-lang.github.io/agent-cube/). Saved sessions, PWA
-caching, and multiplayer remain planned; reloading currently starts a fresh cube.
+Open [AgentCube](https://rust-js-lang.github.io/agent-cube/). Sessions and retry
+receipts are saved in IndexedDB. Copy the address or use **Copy challenge link**
+to send the exact cube position to someone else; their challenge starts with
+zero moves. Links use a validated #cube=<54 URFDLB stickers> fragment, without
+move history or shuffle seeds. The fragment is not sent in HTTP requests.
+
+Reload resumes the saved cube, counts and receipts. A different valid link starts
+a new challenge; an invalid or impossible position leaves saved play untouched.
+If storage is denied, temporary play still works and the URL preserves the
+position, but history and retry receipts are lost on reload. PWA asset caching
+and multiplayer remain planned.
 
 See [Development](docs/development.md) for setup, checks, and the GitHub
 Pages deployment workflow.

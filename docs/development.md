@@ -45,7 +45,7 @@ bun run test:core
 bunx --bun playwright install chromium
 bun run test
 bun run test:mutations
-bun run test:renderer-mutation
+bun run test:browser-mutations
 ```
 
 Build compiles Rust and bundles dist. Check verifies generated output against
@@ -54,7 +54,7 @@ artifact on port 4173, use available CPU cores, and launch the pinned Chromium
 with --enable-features=WebMCP enabled. They use Playwright's page.webmcp.tools() and page.webmcp.callTool(), backed by the real document.modelContext API,
 not a substitute registry. Test failure must not silently skip unsupported APIs.
 
-See [TESTS.md](../TESTS.md) for the seven browser tests, six native and generated-JavaScript tests, 64 parity probes, and four mutation checks.
+See [TESTS.md](../TESTS.md) for the 21 browser tests, twelve native and generated-JavaScript tests, 64 parity probes, and nine mutation checks.
 
 ## Current scope
 
@@ -67,8 +67,17 @@ A stable Three.js scene shows the current stickers. If WebGL creation fails or
 its context is lost, a CSS cube replaces the hidden canvas. Both consume exactly
 the same state. The six-face view remains available independently of graphics.
 
-The IndexedDB probe is only an availability check. Sessions do not persist yet;
-reload starts fresh. PWA caching and multiplayer remain later milestones.
+IndexedDB saves accepted commands and deterministic replay receipts in a single
+transaction. Reload restores state and move count; commands acknowledge only
+after transaction completion. Mutating tools require commandId and
+expectedRevision. Retry the exact request with the same ID after a lost response;
+a receipt can refer to an earlier revision, so read again before a new command.
+
+The address contains the current position in a #cube fragment. Share it to start
+that position with zero moves in another browser. Invalid links and unsupported
+saved formats block recovery and retain the previous data. Storage denial at
+startup enables clearly labeled temporary play. PWA caching and multiplayer
+remain later milestones.
 
 ## GitHub Pages deployment
 
