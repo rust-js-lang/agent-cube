@@ -56,11 +56,13 @@ export const LocalSession = {
       return result$2;
     }
     let snapshot = result$2._0;
-    if (linked != null && linked !== snapshot.facelets) {
+    const action = entryAction(linked, snapshot);
+    const changed = action != null;
+    if (action != null) {
       const result = await Storage.submit(storage, {
         commandId: window.crypto.randomUUID(),
         expectedRevision: snapshot.revision,
-        action: { TAG: "Load", _0: linked },
+        action,
       });
       if (result.TAG === "Err") {
         return result;
@@ -72,6 +74,9 @@ export const LocalSession = {
     );
     localSession.storage = storage;
     LocalSession.present(localSession, snapshot);
+    if (changed) {
+      LocalSession.notify(localSession);
+    }
     return { TAG: "Ok" };
   },
 
@@ -105,19 +110,7 @@ export const LocalSession = {
     if (value.TAG === "Ok") {
       LocalSession.present(localSession, value._0.current);
       if (value._0.accepted) {
-        const borrow = $borrow($fieldCell(localSession, "channel"), true);
-        const channel = borrow.value;
-        try {
-          if (channel != null) {
-            try {
-              channel.postMessage("committed");
-            } catch (error) {
-              $catchable(error);
-            }
-          }
-        } finally {
-          $unborrow(borrow);
-        }
+        LocalSession.notify(localSession);
       }
       return { TAG: "Ok", _0: value._0.receipt };
     } else {
@@ -135,10 +128,7 @@ export const LocalSession = {
     if (result.TAG === "Err") {
       return result;
     }
-    const position = result._0;
-    if (position == null) {
-      return { TAG: "Ok" };
-    }
+    const linked = result._0;
     const result$1 = LocalSession.backend(localSession);
     if (result$1.TAG === "Err") {
       return result$1;
@@ -148,17 +138,34 @@ export const LocalSession = {
       return result$2;
     }
     const current = result$2._0;
-    if (current.facelets !== position) {
+    const action = entryAction(linked, current);
+    if (action != null) {
       const result = await LocalSession.submit(localSession, {
         commandId: window.crypto.randomUUID(),
         expectedRevision: current.revision,
-        action: { TAG: "Load", _0: position },
+        action,
       });
       if (result.TAG === "Err") {
         return result;
       }
     }
     return { TAG: "Ok" };
+  },
+
+  notify(localSession) {
+    const borrow = $borrow($fieldCell(localSession, "channel"), true);
+    const channel = borrow.value;
+    if (channel == null) {
+      $unborrow(borrow);
+    } else {
+      try {
+        channel.postMessage("committed");
+      } catch (error) {
+        $catchable(error);
+      } finally {
+        $unborrow(borrow);
+      }
+    }
   },
 
   present(localSession, snapshot) {
@@ -198,6 +205,16 @@ function linkedPosition() {
       return result$1;
     }
     return { TAG: "Ok", _0: position };
+  }
+}
+
+// A supplied position resumes/loads that challenge; a bare entry always starts fresh.
+function entryAction(linked, snapshot) {
+  if (linked == null) {
+    return { TAG: "Shuffle", _0: 20 };
+  }
+  if (linked !== snapshot.facelets) {
+    return { TAG: "Load", _0: linked };
   }
 }
 //# sourceMappingURL=session.js.map

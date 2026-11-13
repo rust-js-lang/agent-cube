@@ -17,7 +17,9 @@ to send the exact cube position to someone else; their challenge starts with
 zero moves. Links use a validated #cube=<54 URFDLB stickers> fragment, without
 move history or shuffle seeds. The fragment is not sent in HTTP requests.
 
-Reload resumes the saved cube, counts and receipts. A different valid link starts
+Visiting without a cube position starts a fresh 20-move shuffle, even if a
+previous game is saved. The address immediately contains that position.
+Reloading that address resumes the saved cube, counts and receipts. A different valid link starts
 a new challenge; an invalid or impossible position leaves saved play untouched.
 If storage is denied, temporary play still works and the URL preserves the
 position, but history and retry receipts are lost on reload. PWA asset caching

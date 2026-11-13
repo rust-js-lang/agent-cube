@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { call, cubePixels, read, solved, visibleState } from "./helpers";
+import { call, cubePixels, initialUrl, read, solved, visibleState } from "./helpers";
 import ReferenceCube from "../reference/cubejs/index.js";
 
 test("real cube pixels survive repeated camera changes without recreating WebGL", async ({ page }) => {
@@ -14,7 +14,7 @@ test("real cube pixels survive repeated camera changes without recreating WebGL"
       return Reflect.apply(original, this, [type, options]);
     } as typeof original;
   });
-  await page.goto("./");
+  await page.goto(initialUrl);
   await expect(page.locator(".cube-preview")).toHaveAttribute("data-renderer", "webgl");
   await cubePixels(page, 3);
   const calls = await page.evaluate(() => Reflect.get(window, "__webglCalls"));
@@ -35,7 +35,7 @@ test("real cube pixels survive repeated camera changes without recreating WebGL"
 });
 
 test("WebMCP discovers game tools and all 18 turns agree with the independent oracle", async ({ page }) => {
-  await page.goto("./");
+  await page.goto(initialUrl);
   await expect(page.getByTestId("agent-status")).toHaveText("Ready · 4 tools");
   const tools = await page.webmcp.tools();
   expect(tools.map(tool => tool.name)).toEqual(["apply_moves", "get_cube_state", "set_camera_view", "shuffle_cube"]);
@@ -58,7 +58,7 @@ test("WebMCP discovers game tools and all 18 turns agree with the independent or
 });
 
 test("an agent can shuffle 20 moves, inspect state, and solve only through WebMCP", async ({ page }) => {
-  await page.goto("./");
+  await page.goto(initialUrl);
   await expect(page.getByTestId("agent-status")).toHaveText("Ready · 4 tools");
   const shuffled = await call(page, "shuffle_cube", { length: 20 });
   expect(shuffled.isError).toBe(false);
@@ -81,7 +81,7 @@ test("an agent can shuffle 20 moves, inspect state, and solve only through WebMC
 });
 
 test("invalid batches, extra input, and stale or concurrent commands do not corrupt state", async ({ page }) => {
-  await page.goto("./");
+  await page.goto(initialUrl);
   await expect(page.getByTestId("agent-status")).toHaveText("Ready · 4 tools");
   for (const input of [
     { moves: "R invalid U", expectedRevision: 0 },
@@ -116,7 +116,7 @@ test("WebGL creation failure hides the broken canvas and renders playable sticke
     Object.defineProperty(window, "indexedDB", { get() { throw new DOMException("Storage blocked", "SecurityError"); } });
     Object.defineProperty(HTMLCanvasElement.prototype, "getContext", { value() { return null; } });
   });
-  await page.goto("./");
+  await page.goto(initialUrl);
   await expect(page.getByTestId("storage-status")).toHaveText("Temporary · history not saved");
   await expect(page.locator("canvas")).toBeHidden();
   await expect(page.locator(".compatible-cube [data-color]")).toHaveCount(54);
@@ -131,7 +131,7 @@ test("WebGL creation failure hides the broken canvas and renders playable sticke
 });
 
 test("actual graphics context loss switches to a working compatible cube", async ({ page }) => {
-  await page.goto("./");
+  await page.goto(initialUrl);
   await cubePixels(page, 3);
   await page.locator("canvas").evaluate(canvas => {
     const gl = canvas.getContext("webgl2");
@@ -149,7 +149,7 @@ test("actual graphics context loss switches to a working compatible cube", async
 
 test("manual moves work without WebMCP", async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(document, "modelContext", { value: undefined }));
-  await page.goto("./");
+  await page.goto(initialUrl);
   await expect(page.getByTestId("agent-status")).toHaveText("Not available");
   await page.getByRole("button", { name: "Turn R", exact: true }).click();
   await expect(page.getByTestId("cube-status")).toContainText("In progress");

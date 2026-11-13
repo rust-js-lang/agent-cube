@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { PNG } from "pngjs";
 
 export const solved = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB";
+export const initialUrl = `./#cube=${solved}`;
 const palette = [0xf1efdf, 0xe45e40, 0x95c975, 0xe9d35f, 0xf1a84b, 0x649cbf];
 export type State = { facelets: string; faceOrder: string; revision: number; moveCount: number; solved: boolean };
 

@@ -128,7 +128,10 @@ Use replaceState after acceptance so copying the address shares the visible cube
 without creating a history entry per move. The fragment contains no seeds,
 commands or receipts, and is not transmitted in the initial HTTP request.
 
-Opening a different position creates a new challenge with zero moves. Opening
+An address without a position starts a fresh 20-move shuffle, including root/home
+navigation and visits with existing saved play. Its committed position becomes
+the URL so reload keeps that challenge. Opening a different supplied position
+creates a new challenge with zero moves. Opening
 an address already matching saved play resumes its counts and receipts. A new
 browser reconstructs only the position. Validate sticker counts, fixed centers,
 unique physical pieces, corner handedness/twist sum, edge flip sum and matching

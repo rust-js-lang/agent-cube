@@ -45,15 +45,15 @@ impl LocalSession {
         let linked = linked_position()?;
         let storage = storage::open().await?;
         let mut snapshot = storage.read().await?;
-        if let Some(position) = linked
-            && position != snapshot.facelets
-        {
+        let action = entry_action(linked, &snapshot);
+        let changed = action.is_some();
+        if let Some(action) = action {
             snapshot = storage
                 .submit(
                     Command {
                         command_id: window.crypto().random_uuid(),
                         expected_revision: snapshot.revision,
-                        action: Action::Load(position),
+                        action,
                     },
                     None,
                 )
@@ -67,6 +67,9 @@ impl LocalSession {
         });
         *self.storage.borrow_mut() = Some(storage);
         self.present(snapshot);
+        if changed {
+            self.notify();
+        }
         Ok(())
     }
 
@@ -92,10 +95,8 @@ impl LocalSession {
         match storage.submit(command, signal).await {
             Ok(accepted) => {
                 self.present(accepted.current);
-                if accepted.accepted
-                    && let Some(channel) = *self.channel.borrow()
-                {
-                    let _ = catch_unwind(|| channel.post_message("committed"));
+                if accepted.accepted {
+                    self.notify();
                 }
                 Ok(accepted.receipt)
             }
@@ -110,21 +111,26 @@ impl LocalSession {
     }
 
     pub async fn load_link(&self) -> Result<(), String> {
-        if let Some(position) = linked_position()? {
-            let current = self.backend()?.read().await?;
-            if current.facelets != position {
-                self.submit(
-                    Command {
-                        command_id: window.crypto().random_uuid(),
-                        expected_revision: current.revision,
-                        action: Action::Load(position),
-                    },
-                    None,
-                )
-                .await?;
-            }
+        let linked = linked_position()?;
+        let current = self.backend()?.read().await?;
+        if let Some(action) = entry_action(linked, &current) {
+            self.submit(
+                Command {
+                    command_id: window.crypto().random_uuid(),
+                    expected_revision: current.revision,
+                    action,
+                },
+                None,
+            )
+            .await?;
         }
         Ok(())
+    }
+
+    fn notify(&self) {
+        if let Some(channel) = *self.channel.borrow() {
+            let _ = catch_unwind(|| channel.post_message("committed"));
+        }
     }
 
     fn present(&self, snapshot: Snapshot) {
@@ -150,5 +156,14 @@ fn linked_position() -> Result<Option<String>, String> {
         let position = hash.strip_prefix("#cube=").ok_or("Invalid cube link. Expected #cube= followed by 54 URFDLB stickers. Saved data was preserved.")?;
         Cube::from_facelets(position)?;
         Ok(Some(position.into()))
+    }
+}
+
+// A supplied position resumes/loads that challenge; a bare entry always starts fresh.
+fn entry_action(linked: Option<String>, snapshot: &Snapshot) -> Option<Action> {
+    match linked {
+        None => Some(Action::Shuffle(20)),
+        Some(position) if position != snapshot.facelets => Some(Action::Load(position)),
+        Some(_) => None,
     }
 }

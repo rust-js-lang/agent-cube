@@ -42,6 +42,11 @@ close on version changes so an updated application can migrate the database.
 A write failure during saved play keeps that mode; it never falls back to an
 unsaved replacement. Camera view alone is a small localStorage preference.
 
+An address without a position requests a fresh 20-move shuffle, even with saved
+play. Initial entry and root/home navigation use the same decision. This command
+commits and notifies other tabs just like other accepted changes. The resulting
+URL includes the position, so a reload resumes rather than reshuffling.
+
 The current position is #cube=<54 URFDLB stickers>, updated with replaceState
 only after acceptance. The fragment carries neither history, seed nor receipts,
 and is absent from HTTP requests. Copy challenge link copies the address. A new

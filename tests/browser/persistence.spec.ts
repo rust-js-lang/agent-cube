@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import ReferenceCube from "../reference/cubejs/index.js";
-import { call, cubePixels, read, solved, visibleState } from "./helpers";
+import { call, cubePixels, initialUrl, read, solved, visibleState } from "./helpers";
 
-async function ready(page: Page, url = "./") {
+async function ready(page: Page, url = initialUrl) {
   await page.goto(url);
   await expect(page.getByTestId("agent-status")).toHaveText("Ready · 4 tools");
 }
@@ -206,7 +206,7 @@ test("invalid URL positions cannot overwrite saved play", async ({ page }) => {
   await expect(page.getByTestId("storage-status")).toHaveText("Recovery blocked");
   await expect(page.getByRole("alert")).toContainText("impossible");
   expect(await savedText(page)).toBe(saved);
-  await page.goto("./");
+  await page.goto(`./#cube=${before.facelets}`);
   await page.reload();
   await expect(page.getByTestId("agent-status")).toHaveText("Ready · 4 tools");
   expect(await read(page)).toEqual(before);
@@ -276,4 +276,50 @@ test("native tool schemas require stable identities and invalid identities chang
     expect(result.isError).toBe(true);
     expect((await read(page)).revision).toBe(0);
   }
+});
+
+for (const temporary of [false, true]) {
+  test(`a bare visit starts a saved, shareable random shuffle (temporary=${temporary})`, async ({ page }) => {
+    if (temporary) await page.addInitScript(() => Object.defineProperty(window, "indexedDB", { get() { throw new DOMException("blocked", "SecurityError"); } }));
+    await ready(page, "./");
+    const shuffled = await read(page);
+    expect(shuffled.solved).toBe(false);
+    expect(shuffled.moveCount).toBe(0);
+    expect(shuffled.revision).toBe(1);
+    expect(new URL(page.url()).hash).toBe(`#cube=${shuffled.facelets}`);
+    await visibleState(page, shuffled);
+    await page.reload();
+    await expect(page.getByTestId("agent-status")).toHaveText("Ready · 4 tools");
+    expect(await read(page)).toEqual(shuffled);
+    await cubePixels(page, 3);
+  });
+}
+
+test("entering without a position replaces previous play with a fresh shuffle, including the home link", async ({ page, context }) => {
+  await ready(page);
+  await call(page, "apply_moves", { expectedRevision: 0, moves: "R U" });
+  const previous = await read(page);
+  await page.goto("./");
+  await expect(page.locator(".cube-net")).toHaveAttribute("data-revision", "2");
+  const first = await read(page);
+  expect(first.moveCount).toBe(0);
+  expect(first.solved).toBe(false);
+  expect(first.facelets).not.toBe(previous.facelets);
+  await page.getByRole("link", { name: "AgentCube home", exact: true }).click();
+  await expect(page.locator(".cube-net")).toHaveAttribute("data-revision", "3");
+  const second = await read(page);
+  expect(second.moveCount).toBe(0);
+  expect(second.solved).toBe(false);
+  expect(second.facelets).not.toBe(first.facelets);
+  await page.reload();
+  await expect(page.getByTestId("agent-status")).toHaveText("Ready · 4 tools");
+  expect(await read(page)).toEqual(second);
+  const peer = await context.newPage();
+  await ready(peer, new URL("./", page.url()).href);
+  const third = await read(peer);
+  expect(third.revision).toBe(4);
+  expect(third.moveCount).toBe(0);
+  expect(third.facelets).not.toBe(second.facelets);
+  await expect(page.locator(".cube-net")).toHaveAttribute("data-revision", "4");
+  await visibleState(page, third);
 });
