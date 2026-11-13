@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 mod colors;
 mod idb;
+mod presentation;
 mod preview;
 mod session;
 mod storage;
@@ -16,6 +17,7 @@ use react::{CSSProperties, JSX, dom::flush_sync, jsx, use_effect, use_ref, use_s
 use webapi::{Event, EventTargetExt, HashChangeEvent, broadcast_channel, events, window};
 
 use colors::color;
+use presentation::Presentation;
 use preview::Preview;
 use session::LocalSession;
 use webmcp::{
@@ -71,8 +73,17 @@ fn schema(properties: Properties, required: Vec<&'static str>) -> Schema {
 
 pub fn App() -> JSX::Element {
     let (snapshot, set_snapshot) = use_state(|| Session::default().snapshot());
+    let (presentation, set_presentation) = use_state(|| Presentation {
+        snapshot: Session::default().snapshot(),
+        turns: None,
+    });
     let (storage, set_storage) = use_state(|| "Loading saved session…");
-    let session = use_ref(Rc::new(LocalSession::new(set_snapshot, set_storage))).current();
+    let session = use_ref(Rc::new(LocalSession::new(
+        set_snapshot,
+        set_storage,
+        set_presentation,
+    )))
+    .current();
     let (view, set_view) = use_state(|| {
         catch_unwind(|| {
             window
@@ -373,6 +384,11 @@ pub fn App() -> JSX::Element {
     let shuffle_button = Rc::clone(&session);
     let sharing_session = Rc::clone(&session);
     let ready = session.ready();
+    let finishing = Rc::clone(&session);
+    let complete: Rc<dyn Fn(u32)> =
+        Rc::new(move |revision| finishing.presentations.finish(revision));
+    let detaching = Rc::clone(&session);
+    let detach: Rc<dyn Fn()> = Rc::new(move || detaching.presentations.interrupt());
     let colors: Vec<char> = snapshot.facelets.chars().collect();
 
     jsx! {
@@ -390,7 +406,7 @@ pub fn App() -> JSX::Element {
                 <section className="lab" aria-label="Cube playground">
                     <div className="stage">
                         <div className="stage-top"><span className="eyebrow">{"01 / YOUR NEXT CHALLENGE"}</span><span className="preview-label">{"3 × 3 · LIVE"}</span></div>
-                        <Preview view={*view} facelets={snapshot.facelets.clone()} />
+                        <Preview view={*view} step={presentation.clone()} complete={complete} detach={detach} />
                         <div className="stage-bottom"><span>{"LOOK AROUND"}</span><div className="view-controls" role="group" aria-label="Camera view">
                             <button type="button" aria-pressed={*view == "perspective"} onClick={move |_| change_view("perspective")}>{"Perspective"}</button>
                             <button type="button" aria-pressed={*view == "front"} onClick={move |_| change_view("front")}>{"Front"}</button>

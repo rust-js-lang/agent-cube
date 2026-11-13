@@ -41,6 +41,10 @@ export interface Move {
 }
 
 export const Move: {
+    rotation(move: Move): [
+        number[],
+        number
+    ];
     notation(move: Move): string;
     inverse(move: Move): Move;
 };

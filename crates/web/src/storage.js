@@ -222,7 +222,7 @@ const Journal = {
     let tmp = true;
     const result$1 = Command.validate(command);
     let result;
-    bb50: {
+    bb68: {
       if (result$1.TAG === "Err") {
         result = result$1;
       } else {
@@ -254,16 +254,33 @@ const Journal = {
           } else {
             const seed$1 =
               command.action.TAG === "Moves" || command.action.TAG === "Load" ? undefined : seed;
+            const { facelets: from } = Session$1.snapshot(session);
             tmp = false;
             const entry = { command, seed: seed$1 };
             const result$1 = apply(session, entry);
             if (result$1.TAG !== "Err") {
               const receipt = result$1._0;
+              let turns;
+              if (entry.command.action.TAG === "Moves") {
+                const text = entry.command.action._0;
+                const result$1 = parseMoves(text);
+                if (result$1.TAG !== "Err") {
+                  turns = { from, moves: result$1._0 };
+                } else {
+                  result = result$1;
+                  break bb68;
+                }
+              } else {
+                turns = undefined;
+              }
               journal.entries.push(entry);
-              result = { TAG: "Ok", _0: { receipt, current: { ...receipt }, accepted: true } };
+              result = {
+                TAG: "Ok",
+                _0: { receipt, current: { ...receipt }, accepted: true, turns },
+              };
             } else {
               result = result$1;
-              break bb50;
+              break bb68;
             }
           }
           if (tmp) {

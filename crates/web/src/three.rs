@@ -6,18 +6,27 @@ use webapi::HTMLCanvasElement;
 
 #[cfg_attr(rust_js, rust_js::types = "three#Scene")]
 pub struct Scene(PhantomData<JsObject>);
+#[cfg_attr(rust_js, rust_js::types = "three#Group")]
+pub struct Group(PhantomData<JsObject>);
 #[cfg_attr(rust_js, rust_js::types = "three#PerspectiveCamera")]
 pub struct PerspectiveCamera(PhantomData<JsObject>);
 #[cfg_attr(rust_js, rust_js::types = "three#WebGLRenderer")]
 pub struct WebGLRenderer(PhantomData<JsObject>);
-#[cfg_attr(rust_js, rust_js::types = "three#BoxGeometry")]
-pub struct BoxGeometry(PhantomData<JsObject>);
+#[cfg_attr(
+    rust_js,
+    rust_js::types = "three/addons/geometries/RoundedBoxGeometry.js#RoundedBoxGeometry"
+)]
+pub struct RoundedBoxGeometry(PhantomData<JsObject>);
 #[cfg_attr(rust_js, rust_js::types = "three#MeshBasicMaterial")]
 pub struct MeshBasicMaterial(PhantomData<JsObject>);
+#[cfg_attr(rust_js, rust_js::types = "three#MeshPhongMaterial")]
+pub struct MeshPhongMaterial(PhantomData<JsObject>);
 #[cfg_attr(rust_js, rust_js::types = "three#Mesh")]
 pub struct Mesh(PhantomData<JsObject>);
-#[cfg_attr(rust_js, rust_js::types = "three#PlaneGeometry")]
-pub struct PlaneGeometry(PhantomData<JsObject>);
+#[cfg_attr(rust_js, rust_js::types = "three#AmbientLight")]
+pub struct AmbientLight(PhantomData<JsObject>);
+#[cfg_attr(rust_js, rust_js::types = "three#DirectionalLight")]
+pub struct DirectionalLight(PhantomData<JsObject>);
 #[cfg_attr(rust_js, rust_js::types = "three#Color")]
 pub struct Color(PhantomData<JsObject>);
 #[cfg_attr(rust_js, rust_js::types = "three#Euler")]
@@ -30,13 +39,21 @@ pub struct RendererOptions {
     pub antialias: bool,
     pub alpha: bool,
 }
-
 pub struct MaterialOptions {
     pub color: u32,
+}
+pub struct PhongOptions {
+    pub color: u32,
+    pub shininess: f64,
+    pub specular: u32,
 }
 
 #[cfg_attr(rust_js, rust_js::link_name = "new three#Scene")]
 pub fn scene() -> &'static Scene {
+    unreachable!()
+}
+#[cfg_attr(rust_js, rust_js::link_name = "new three#Group")]
+pub fn group() -> &'static Group {
     unreachable!()
 }
 #[cfg_attr(rust_js, rust_js::link_name = "new three#PerspectiveCamera")]
@@ -52,36 +69,63 @@ pub fn perspective_camera(
 pub fn renderer(options: RendererOptions) -> Result<&'static WebGLRenderer, &'static JsError> {
     unreachable!()
 }
-#[cfg_attr(rust_js, rust_js::link_name = "new three#BoxGeometry")]
-pub fn box_geometry(width: f64, height: f64, depth: f64) -> &'static BoxGeometry {
+#[cfg_attr(
+    rust_js,
+    rust_js::link_name = "new three/addons/geometries/RoundedBoxGeometry.js#RoundedBoxGeometry"
+)]
+pub fn rounded_box(
+    width: f64,
+    height: f64,
+    depth: f64,
+    segments: u32,
+    radius: f64,
+) -> &'static RoundedBoxGeometry {
     unreachable!()
 }
 #[cfg_attr(rust_js, rust_js::link_name = "new three#MeshBasicMaterial")]
 pub fn material(options: MaterialOptions) -> &'static MeshBasicMaterial {
     unreachable!()
 }
+#[cfg_attr(rust_js, rust_js::link_name = "new three#MeshPhongMaterial")]
+pub fn phong_material(options: PhongOptions) -> &'static MeshPhongMaterial {
+    unreachable!()
+}
 #[cfg_attr(rust_js, rust_js::link_name = "new three#Mesh")]
-pub fn mesh<G: Geometry>(geometry: &G, material: &MeshBasicMaterial) -> &'static Mesh {
+pub fn mesh<G: Geometry, M: Material>(geometry: &G, material: &M) -> &'static Mesh {
+    unreachable!()
+}
+#[cfg_attr(rust_js, rust_js::link_name = "new three#AmbientLight")]
+pub fn ambient_light(color: u32, intensity: f64) -> &'static AmbientLight {
+    unreachable!()
+}
+#[cfg_attr(rust_js, rust_js::link_name = "new three#DirectionalLight")]
+pub fn directional_light(color: u32, intensity: f64) -> &'static DirectionalLight {
     unreachable!()
 }
 
-impl Scene {
+/// The shared Object3D surface of these actual Three.js subclasses.
+pub trait Node {
     #[cfg_attr(rust_js, rust_js::link_name = "add")]
-    pub fn add(&self, mesh: &Mesh) {
+    fn add<T: Node>(&self, node: &T) -> &Self {
         unreachable!()
     }
-}
-impl Mesh {
     #[cfg_attr(rust_js, rust_js::link_name = "get position")]
-    pub fn position(&self) -> &'static Vector3 {
+    fn position(&self) -> &'static Vector3 {
+        unreachable!()
+    }
+    #[cfg_attr(rust_js, rust_js::link_name = "get rotation")]
+    fn rotation(&self) -> &'static Euler {
         unreachable!()
     }
 }
+impl Node for Scene {}
+impl Node for Group {}
+impl Node for Mesh {}
+impl Node for PerspectiveCamera {}
+impl Node for AmbientLight {}
+impl Node for DirectionalLight {}
+
 impl PerspectiveCamera {
-    #[cfg_attr(rust_js, rust_js::link_name = "get position")]
-    pub fn position(&self) -> &'static Vector3 {
-        unreachable!()
-    }
     #[cfg_attr(rust_js, rust_js::link_name = "lookAt")]
     pub fn look_at(&self, x: f64, y: f64, z: f64) {
         unreachable!()
@@ -97,7 +141,13 @@ impl PerspectiveCamera {
 }
 impl Vector3 {
     #[cfg_attr(rust_js, rust_js::link_name = "set")]
-    pub fn set(&self, x: f64, y: f64, z: f64) -> &'static Vector3 {
+    pub fn set(&self, x: f64, y: f64, z: f64) -> &Self {
+        unreachable!()
+    }
+}
+impl Euler {
+    #[cfg_attr(rust_js, rust_js::link_name = "set")]
+    pub fn set(&self, x: f64, y: f64, z: f64) -> &Self {
         unreachable!()
     }
 }
@@ -119,35 +169,6 @@ impl WebGLRenderer {
         unreachable!()
     }
 }
-impl BoxGeometry {
-    #[cfg_attr(rust_js, rust_js::link_name = "dispose")]
-    pub fn dispose(&self) {
-        unreachable!()
-    }
-}
-impl MeshBasicMaterial {
-    #[cfg_attr(rust_js, rust_js::link_name = "dispose")]
-    pub fn dispose(&self) {
-        unreachable!()
-    }
-}
-
-#[cfg_attr(rust_js, rust_js::link_name = "new three#PlaneGeometry")]
-pub fn plane_geometry(width: f64, height: f64) -> &'static PlaneGeometry {
-    unreachable!()
-}
-impl Mesh {
-    #[cfg_attr(rust_js, rust_js::link_name = "get rotation")]
-    pub fn rotation(&self) -> &'static Euler {
-        unreachable!()
-    }
-}
-impl Euler {
-    #[cfg_attr(rust_js, rust_js::link_name = "set")]
-    pub fn set(&self, x: f64, y: f64, z: f64) -> &'static Euler {
-        unreachable!()
-    }
-}
 impl MeshBasicMaterial {
     #[cfg_attr(rust_js, rust_js::link_name = "get color")]
     pub fn color(&self) -> &'static Color {
@@ -156,18 +177,22 @@ impl MeshBasicMaterial {
 }
 impl Color {
     #[cfg_attr(rust_js, rust_js::link_name = "setHex")]
-    pub fn set_hex(&self, hex: u32) -> &'static Color {
+    pub fn set_hex(&self, hex: u32) -> &Self {
         unreachable!()
     }
 }
-impl PlaneGeometry {
+pub trait Material {
     #[cfg_attr(rust_js, rust_js::link_name = "dispose")]
-    pub fn dispose(&self) {
+    fn dispose(&self) {
         unreachable!()
     }
 }
-
-// Both concrete geometries extend Three.js BufferGeometry.
-pub trait Geometry {}
-impl Geometry for BoxGeometry {}
-impl Geometry for PlaneGeometry {}
+impl Material for MeshBasicMaterial {}
+impl Material for MeshPhongMaterial {}
+pub trait Geometry {
+    #[cfg_attr(rust_js, rust_js::link_name = "dispose")]
+    fn dispose(&self) {
+        unreachable!()
+    }
+}
+impl Geometry for RoundedBoxGeometry {}

@@ -57,6 +57,11 @@ export function faceletPosition(face, cell) {
 }
 
 export const Move = {
+  /** Outward face normal and signed clockwise quarter turns (inverse is -1). */
+  rotation(move) {
+    return [$index(NORMALS, move.face), move.turns === 3 ? -1 : (move.turns << 24) >> 24];
+  },
+
   notation(move) {
     let suffix;
     switch (move.turns) {

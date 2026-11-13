@@ -58,6 +58,18 @@ pub struct Move {
 }
 
 impl Move {
+    /// Outward face normal and signed clockwise quarter turns (inverse is -1).
+    pub fn rotation(self) -> ([i8; 3], i8) {
+        (
+            NORMALS[self.face],
+            if self.turns == 3 {
+                -1
+            } else {
+                self.turns as i8
+            },
+        )
+    }
+
     pub fn notation(self) -> String {
         let suffix = match self.turns {
             1 => "",

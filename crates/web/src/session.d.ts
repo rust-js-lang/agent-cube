@@ -2,10 +2,12 @@
 
 import type { Command } from "../../cube-core/src/journal.js";
 import type { Snapshot } from "../../cube-core/src/lib.js";
+import type { Presentations } from "./presentation.js";
 import type { Storage } from "./storage.js";
 
 export interface LocalSession {
     state: Snapshot;
+    presentations: Presentations;
     storage?: Storage | undefined;
     channel?: BroadcastChannel | undefined;
     publish: any;
@@ -13,7 +15,7 @@ export interface LocalSession {
 }
 
 export const LocalSession: {
-    "new"(publish: any, status: any): LocalSession;
+    "new"(publish: any, status: any, presentation: any): LocalSession;
     ready(localSession: LocalSession): boolean;
     snapshot(localSession: LocalSession): Snapshot;
     setChannel(localSession: LocalSession, channel?: BroadcastChannel | null | undefined): void;

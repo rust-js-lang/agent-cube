@@ -172,6 +172,7 @@ fn propose(
                 receipt: snapshot.clone(),
                 current: snapshot,
                 accepted: false,
+                turns: None,
             })
         }
     }

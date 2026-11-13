@@ -208,6 +208,13 @@ interrupted after acceptance, report what was committed; never imply rollback.
 On cancellation, stop unsubmitted work; already committed moves remain accepted.
 Choose a bounded animation policy so spectators and agents cannot lag indefinitely.
 
+Accepted local move commands include a transient before-position and parsed turn
+sequence for presentation. They are created by the rule owner after validation,
+and do not change the saved format or agent observation schema. An ordered
+browser presentation queue consumes them after commit. Snapshots recovered from
+reload, links or another tab snap directly; they do not invent missed move events.
+See ADR 0004 for exact animation and interruption behavior.
+
 ## Browser interface
 
 Use rust-js with React for controls and Three.js directly through typed bindings

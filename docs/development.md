@@ -54,7 +54,7 @@ artifact on port 4173, use available CPU cores, and launch the pinned Chromium
 with --enable-features=WebMCP enabled. They use Playwright's page.webmcp.tools() and page.webmcp.callTool(), backed by the real document.modelContext API,
 not a substitute registry. Test failure must not silently skip unsupported APIs.
 
-See [TESTS.md](../TESTS.md) for the 24 browser tests, twelve native and generated-JavaScript tests, 64 parity probes, and nine mutation checks.
+See [TESTS.md](../TESTS.md) for the 33 browser tests, thirteen native and generated-JavaScript tests, 64 parity probes, and ten mutation checks.
 
 ## Current scope
 
@@ -63,7 +63,10 @@ revision-checked batches. Human controls and WebMCP share the same referee. Tool
 are get_cube_state, shuffle_cube, apply_moves, and set_camera_view. Agents obtain
 all facelets and submit solutions; the app does not contain a solver shortcut.
 
-A stable Three.js scene shows the current stickers. If WebGL creation fails or
+A stable Three.js scene shows 27 rounded cubies with individually attached
+stickers. Played turns rotate nine cubies as a group, then snap from exact state.
+Ordered presentation finishes before a move tool returns; reduced motion and
+interruption fast-forward presentation without changing accepted game state. If WebGL creation fails or
 its context is lost, a CSS cube replaces the hidden canvas. Both consume exactly
 the same state. The six-face view remains available independently of graphics.
 
@@ -102,3 +105,12 @@ root toolchain with its Rust release, reinstall submodule dependencies when its
 lockfile changes, then rebuild, review generated output, and run all app checks.
 Commit the pointer and any output changes together. Never pin unpublished local
 compiler work: CI must be able to fetch the exact commit.
+
+## Rendering cost
+
+One local 14-worker software-rendering run with two-segment rounded geometry and
+MeshStandardMaterial took 26.1 seconds for the original 24 tests and hit three
+five-second startup/action limits. One-segment rounded geometry and glossy
+MeshPhongMaterial reduced GPU/CPU cost: the expanded 33-test run passed in 9.6
+seconds with the same 14 workers and existing timeouts. Keep both optimizations;
+these are local diagnostic measurements, not hardware-independent benchmarks.

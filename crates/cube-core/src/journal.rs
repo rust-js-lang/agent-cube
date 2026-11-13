@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Session, Snapshot};
+use crate::{Move, Session, Snapshot, parse_moves};
 
 pub const MAX_COMMANDS: usize = 4096;
 
@@ -36,12 +36,19 @@ pub struct Journal {
     entries: Vec<Entry>,
 }
 
+#[derive(Clone)]
+pub struct Turns {
+    pub from: String,
+    pub moves: Vec<Move>,
+}
+
 pub struct Acceptance {
     /// The original receipt, including when retried after newer commands.
     pub receipt: Snapshot,
     /// The latest authoritative state, which the UI must display.
     pub current: Snapshot,
     pub accepted: bool,
+    pub turns: Option<Turns>,
 }
 
 impl Default for Journal {
@@ -120,6 +127,7 @@ impl Journal {
                     receipt: receipts[index].clone(),
                     current: session.snapshot(),
                     accepted: false,
+                    turns: None,
                 })
             }
         } else if self.entries.len() == MAX_COMMANDS {
@@ -129,13 +137,22 @@ impl Journal {
                 Action::Moves(_) | Action::Load(_) => None,
                 Action::Shuffle(_) => Some(seed),
             };
+            let from = session.snapshot().facelets;
             let entry = Entry { command, seed };
             let receipt = apply(&mut session, &entry)?;
+            let turns = match &entry.command.action {
+                Action::Moves(text) => Some(Turns {
+                    from,
+                    moves: parse_moves(text)?,
+                }),
+                _ => None,
+            };
             self.entries.push(entry);
             Ok(Acceptance {
                 current: receipt.clone(),
                 receipt,
                 accepted: true,
+                turns,
             })
         }
     }
@@ -151,6 +168,23 @@ mod tests {
             expected_revision: revision,
             action: Action::Moves(moves.into()),
         }
+    }
+
+    #[test]
+    fn accepted_turns_reproduce_the_committed_state_and_retries_do_not_animate() {
+        let mut log = Journal::default();
+        let command = moves("animated", 0, "R U2 F'");
+        let accepted = log.accept(command.clone(), 0).unwrap();
+        let turns = accepted.turns.unwrap();
+        let mut cube = crate::Cube::from_facelets(&turns.from).unwrap();
+        assert_eq!(turns.moves[0].rotation(), ([1, 0, 0], 1));
+        assert_eq!(turns.moves[1].rotation(), ([0, 1, 0], 2));
+        assert_eq!(turns.moves[2].rotation(), ([0, 0, 1], -1));
+        for movement in turns.moves {
+            cube.apply(movement);
+        }
+        assert_eq!(cube.facelets(), accepted.current.facelets);
+        assert!(log.accept(command, 0).unwrap().turns.is_none());
     }
 
     #[test]

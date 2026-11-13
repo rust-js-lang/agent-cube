@@ -8,8 +8,11 @@ with saved local play and shareable cube links. Tailscale multiplayer is planned
 ## Status
 
 Local play is implemented: a shared Rust cube engine, all 18 face turns,
-shuffling, a six-face view, Three.js rendering with a working no-WebGL view,
-and native WebMCP tools. Agents inspect the cube and submit legal solution moves.
+shuffling, a six-face view, animated Three.js cubies with a working no-WebGL view,
+and native WebMCP tools. Rounded cubies and glossy plastic give each face turn
+visible depth. Human and agent moves share ordered, eased layer animations;
+reduced motion presents the final position immediately. Agents inspect the cube
+and submit legal solution moves.
 
 Open [AgentCube](https://rust-js-lang.github.io/agent-cube/). Sessions and retry
 receipts are saved in IndexedDB. Copy the address or use **Copy challenge link**

@@ -1,16 +1,19 @@
 //! Browser session boundary shared by human controls and WebMCP.
 use std::cell::RefCell;
 use std::panic::catch_unwind;
+use std::rc::Rc;
 
-use cube_core::journal::{Action, Command};
+use cube_core::journal::{Action, Command, Turns};
 use cube_core::{Cube, Session, Snapshot};
 use react::{Dispatch, SetStateAction, dom::flush_sync};
 use webapi::{AbortSignal, BroadcastChannel, window};
 
+use crate::presentation::{Presentation, Presentations};
 use crate::storage::{self, Storage};
 
 pub struct LocalSession {
     state: RefCell<Snapshot>,
+    pub presentations: Rc<Presentations>,
     storage: RefCell<Option<Storage>>,
     channel: RefCell<Option<&'static BroadcastChannel>>,
     publish: &'static Dispatch<SetStateAction<Snapshot>>,
@@ -21,9 +24,14 @@ impl LocalSession {
     pub fn new(
         publish: &'static Dispatch<SetStateAction<Snapshot>>,
         status: &'static Dispatch<SetStateAction<&'static str>>,
+        presentation: &'static Dispatch<SetStateAction<Presentation>>,
     ) -> Self {
         Self {
             state: RefCell::new(Session::default().snapshot()),
+            presentations: Rc::new(Presentations::new(
+                Session::default().snapshot(),
+                presentation,
+            )),
             storage: RefCell::new(None),
             channel: RefCell::new(None),
             publish,
@@ -66,7 +74,7 @@ impl LocalSession {
             "Temporary · history not saved"
         });
         *self.storage.borrow_mut() = Some(storage);
-        self.present(snapshot);
+        self.present(snapshot, None);
         if changed {
             self.notify();
         }
@@ -82,7 +90,8 @@ impl LocalSession {
 
     pub async fn read(&self) -> Result<Snapshot, String> {
         let snapshot = self.backend()?.read().await?;
-        self.present(snapshot.clone());
+        self.present(snapshot.clone(), None);
+        self.presentations.wait(snapshot.revision).await;
         Ok(snapshot)
     }
 
@@ -94,16 +103,18 @@ impl LocalSession {
         let storage = self.backend()?;
         match storage.submit(command, signal).await {
             Ok(accepted) => {
-                self.present(accepted.current);
+                let revision = accepted.current.revision;
+                self.present(accepted.current, accepted.turns);
                 if accepted.accepted {
                     self.notify();
                 }
+                self.presentations.wait(revision).await;
                 Ok(accepted.receipt)
             }
             Err(error) => {
                 // Refresh stale plans, but never replace saved play with temporary play after a failure.
                 if let Ok(current) = storage.read().await {
-                    self.present(current);
+                    self.present(current, None);
                 }
                 Err(error)
             }
@@ -133,7 +144,7 @@ impl LocalSession {
         }
     }
 
-    fn present(&self, snapshot: Snapshot) {
+    fn present(&self, snapshot: Snapshot, turns: Option<Turns>) {
         if snapshot.revision >= self.state.borrow().revision {
             let target = format!("#cube={}", snapshot.facelets);
             if window.location().hash() != target {
@@ -143,7 +154,11 @@ impl LocalSession {
             }
             *self.state.borrow_mut() = snapshot.clone();
             let publish = self.publish;
-            flush_sync(move || publish.set(snapshot));
+            let presentations = Rc::clone(&self.presentations);
+            flush_sync(move || {
+                publish.set(snapshot.clone());
+                presentations.enqueue(snapshot, turns);
+            });
         }
     }
 }

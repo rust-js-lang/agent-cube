@@ -9,3 +9,9 @@ export interface RendererOptions {
 export interface MaterialOptions {
     color: number;
 }
+
+export interface PhongOptions {
+    color: number;
+    shininess: number;
+    specular: number;
+}

@@ -3,6 +3,7 @@
 /** Browser session boundary shared by human controls and WebMCP. */
 import { flushSync } from "react-dom";
 
+import { Presentations } from "./presentation.js";
 import { Storage } from "./storage.js";
 import * as Storage$1 from "./storage.js";
 import { Cube, Session, cubeDefault_default } from "../../cube-core/src/lib.js";
@@ -17,9 +18,13 @@ import {
 } from "@rust-js/std";
 
 export const LocalSession = {
-  new(publish, status) {
+  new(publish, status, presentation) {
     return {
       state: Session.snapshot({ cube: cubeDefault_default(), revision: 0, moveCount: 0 }),
+      presentations: Presentations.new(
+        Session.snapshot({ cube: cubeDefault_default(), revision: 0, moveCount: 0 }),
+        presentation,
+      ),
       storage: undefined,
       channel: undefined,
       publish,
@@ -97,6 +102,7 @@ export const LocalSession = {
     }
     const snapshot = result$1._0;
     LocalSession.present(localSession, { ...snapshot });
+    await Presentations.wait(localSession.presentations, snapshot.revision);
     return { TAG: "Ok", _0: snapshot };
   },
 
@@ -108,10 +114,12 @@ export const LocalSession = {
     const storage = result._0;
     const value = await Storage.submit(storage, command, signal);
     if (value.TAG === "Ok") {
-      LocalSession.present(localSession, value._0.current);
+      const revision = value._0.current.revision;
+      LocalSession.present(localSession, value._0.current, value._0.turns);
       if (value._0.accepted) {
         LocalSession.notify(localSession);
       }
+      await Presentations.wait(localSession.presentations, revision);
       return { TAG: "Ok", _0: value._0.receipt };
     } else {
       // Refresh stale plans, but never replace saved play with temporary play after a failure.
@@ -168,7 +176,7 @@ export const LocalSession = {
     }
   },
 
-  present(localSession, snapshot) {
+  present(localSession, snapshot, turns) {
     if (snapshot.revision >= $borrow(localSession.state).revision) {
       const target = `#cube=${snapshot.facelets}`;
       if (window.location.hash !== target) {
@@ -178,7 +186,11 @@ export const LocalSession = {
       }
       $assign($borrowMut(localSession.state), { ...snapshot });
       const publish = localSession.publish;
-      flushSync(() => publish(snapshot));
+      const presentations = localSession.presentations;
+      flushSync(() => {
+        publish({ ...snapshot });
+        Presentations.enqueue(presentations, snapshot, turns);
+      });
     }
   },
 };

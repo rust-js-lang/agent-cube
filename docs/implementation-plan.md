@@ -64,6 +64,11 @@ retries never duplicate moves, and reload restores the committed state.
 
 ## 4. Three.js presentation and offline installation
 
+Played-turn animation is implemented: rounded cubies, layer rotation, exact
+snapping, ordered presentation, reduced motion, bounded batches and recovery
+from stalled frames or graphics loss. Human and WebMCP inputs share it. Timing,
+playback controls, keyboard input, PWA caching and installation remain outstanding.
+
 - Render the 3D cube with typed bindings and camera controls.
 - Animate face turns from accepted events, snapping to exact state afterward.
 - Retain the flat view, keyboard controls, and accessible status messages.

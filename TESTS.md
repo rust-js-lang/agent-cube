@@ -4,12 +4,12 @@ Updated 2026-11-13. Run checks locally; the Pages workflow only builds and deplo
 
 | Suite | Size | What it proves |
 |---|---|---|
-| Native Rust cube tests | 12 tests | All 18 moves and three algorithms match independent fixtures; move inverses, order four, sticker conservation, parsing, revisions, and atomic batches |
-| The same tests compiled through rust-js | 12 tests | The Rust tests also pass as JavaScript with Bun |
+| Native Rust cube tests | 13 tests | All 18 moves and three algorithms match independent fixtures; move inverses, order four, sticker conservation, parsing, revisions, and atomic batches |
+| The same tests compiled through rust-js | 13 tests | The Rust tests also pass as JavaScript with Bun |
 | Cross-target/reference parity | 64 seeded 100-move sequences | Native Rust, generated JavaScript, and an independent cube model produce identical algorithms and all 54 facelets |
-| Playwright against the production bundle | 24 tests | Visible sticker pixels, stable renderer lifetime, camera/move updates, all moves, WebMCP shuffle/solve, invalid/stale/concurrent commands, missing WebMCP, denied storage, failed WebGL, and actual context loss |
+| Playwright against the production bundle | 33 tests | Visible sticker pixels, stable renderer lifetime, camera/move updates, all moves, WebMCP shuffle/solve, invalid/stale/concurrent commands, missing WebMCP, denied storage, failed WebGL, and actual context loss |
 | Native mutations | 7 | Reversed turns, stale revisions, truncated batches, impossible permutation/twist/flip, and missing retry recognition must fail tests |
-| Browser mutations | 2 | Renderer recreation and acknowledging an aborted transaction must fail the corresponding production-browser assertions |
+| Browser mutations | 3 | Renderer recreation, acknowledging an aborted transaction, and leaving rotating geometry stationary must fail the corresponding production-browser assertions |
 
 ```sh
 bun run build
@@ -55,7 +55,7 @@ history on reload. Impossible URL positions cannot overwrite existing play.
 The domain suite also imports 128 seeded 100-move positions and rejects
 impossible pieces, corner twists, edge flips, parity, counts and centers.
 
-Seven native mutations and two production-browser mutations were caught. The
+Seven native mutations and three production-browser mutations were caught. The
 aborted-commit mutation deliberately ignores the transaction completion error;
 the test rejects the resulting false success acknowledgment. PWA reload caching
 and multiplayer still require their own future tests.
@@ -65,3 +65,19 @@ a fresh 20-move shuffle in both durable and temporary modes, place it in the URL
 and preserve it on reload. Root/home navigation and a new tab also start fresh,
 with existing tabs notified. Rule fixtures explicitly supply their solved
 position through the supported link format.
+
+Animation coverage controls RAF while leaving IndexedDB and React scheduling real.
+It requires visible halfway-turn pixel movement, compares the endpoint against a
+freshly rendered authoritative position, and checks all 18 directions/endpoints
+against the independent cube model. It also checks ordered queued commands,
+non-repeating retries, a maximum 128-move batch, reduced motion, stalled-frame
+deadlines, preference changes, hidden pages and actual WebGL context loss during
+rotation. Tool completion waits for presentation. Native and generated Rust tests
+verify accepted turn events reconstruct the committed state, with no event on retry.
+A mutation zeroing actual layer rotation (while retaining angle/status metadata)
+failed the halfway-pixel assertion. Thus status attributes alone cannot prove motion.
+
+Codex also invoked a four-move sequence through the built-in browser’s native
+WebMCP tools. The call completed with the canvas idle at the committed visual
+revision, and the visible game showed four moves. A demo records real
+production-canvas frames; it is not a separately drawn animation.

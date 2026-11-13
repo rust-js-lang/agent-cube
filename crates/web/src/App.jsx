@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { color } from "./colors.js";
+import { Presentations } from "./presentation.js";
 import { Preview } from "./preview.jsx";
 import { LocalSession } from "./session.js";
 import { useWebMCP } from "use-webmcp-tool";
@@ -82,8 +83,11 @@ export function App() {
   const [snapshot, setSnapshot] = useState(() =>
     Session.snapshot({ cube: cubeDefault_default(), revision: 0, moveCount: 0 }),
   );
+  const [presentation, setPresentation] = useState(() => ({
+    snapshot: Session.snapshot({ cube: cubeDefault_default(), revision: 0, moveCount: 0 }),
+  }));
   const [storage, setStorage] = useState("Loading saved session…");
-  const session = useRef(LocalSession.new(setSnapshot, setStorage)).current;
+  const session = useRef(LocalSession.new(setSnapshot, setStorage, setPresentation)).current;
   const [view, setView] = useState(() => {
     const result = $catchUnwind(() => {
       const result = $try(() => window.localStorage);
@@ -364,6 +368,8 @@ export function App() {
     }
   }
   const ready = LocalSession.ready(session);
+  const complete = (revision) => Presentations.finish(session.presentations, revision);
+  const detach = () => Presentations.interrupt(session.presentations);
   const colors = Array.from(snapshot.facelets);
 
   return (
@@ -400,7 +406,22 @@ export function App() {
               <span className="eyebrow">01 / YOUR NEXT CHALLENGE</span>
               <span className="preview-label">3 × 3 · LIVE</span>
             </div>
-            <Preview view={view} facelets={snapshot.facelets} />
+            <Preview
+              view={view}
+              step={{
+                ...presentation,
+                snapshot: { ...presentation.snapshot },
+                turns:
+                  presentation.turns == null
+                    ? presentation.turns
+                    : {
+                        ...presentation.turns,
+                        moves: presentation.turns.moves.map((item) => ({ ...item })),
+                      },
+              }}
+              complete={complete}
+              detach={detach}
+            />
             <div className="stage-bottom">
               <span>LOOK AROUND</span>
               <div className="view-controls" role="group" aria-label="Camera view">

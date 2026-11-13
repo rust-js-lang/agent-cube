@@ -2,7 +2,7 @@
 
 /** Replayable local practice log. Storage commits a proposed log before publishing it. */
 
-import { Session, cubeDefault_default } from "./lib.js";
+import { Session, cubeDefault_default, parseMoves } from "./lib.js";
 import { $add, $byteLen, $eq, $index, $json, $roomFor } from "@rust-js/std";
 
 export const MAX_COMMANDS = 4096;
@@ -221,12 +221,26 @@ export const Journal = {
     } else {
       const seed$1 =
         command.action.TAG === "Moves" || command.action.TAG === "Load" ? undefined : seed;
+      const from = Session.snapshot(session).facelets;
       const entry = { command, seed: seed$1 };
       const result = apply(session, entry);
       if (result.TAG === "Err") {
         return result;
       }
       const receipt = result._0;
+      let turns;
+      if (entry.command.action.TAG === "Moves") {
+        const result = parseMoves(entry.command.action._0);
+        if (result.TAG === "Err") {
+          return result;
+        }
+        turns = {
+          from,
+          moves: result._0,
+        };
+      } else {
+        turns = undefined;
+      }
       journal.entries.push(entry);
       return {
         TAG: "Ok",
@@ -234,6 +248,7 @@ export const Journal = {
           current: receipt,
           receipt,
           accepted: true,
+          turns,
         },
       };
     }
