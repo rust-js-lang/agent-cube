@@ -219,6 +219,11 @@ test("copy challenge link puts only the exact position in the clipboard", async 
   await page.getByRole("button", { name: "Copy challenge link", exact: true }).click();
   await expect(page.getByRole("button", { name: "Link copied", exact: true })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(page.url());
+  const copied = page.url();
+  await page.getByRole("button", { name: "Turn R", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Copy challenge link", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(copied);
+  expect(page.url()).not.toBe(copied);
   expect(new URL(page.url()).hash).toBe(`#cube=${(await read(page)).facelets}`);
 });
 

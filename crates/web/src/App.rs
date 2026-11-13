@@ -87,6 +87,10 @@ pub fn App() -> JSX::Element {
     });
     let (problem, set_problem) = use_state(|| None::<String>);
     let (sharing, set_sharing) = use_state(|| "Copy challenge link");
+    use_effect(
+        move || set_sharing.set("Copy challenge link"),
+        Some(&(snapshot.facelets.clone(),)),
+    );
     let change_view = move |next| {
         let _ = catch_unwind(|| {
             if let Ok(storage) = window.local_storage() {

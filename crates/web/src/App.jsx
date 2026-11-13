@@ -96,6 +96,7 @@ export function App() {
   });
   const [problem, setProblem] = useState(undefined);
   const [sharing, setSharing] = useState("Copy challenge link");
+  useEffect(() => setSharing("Copy challenge link"), [snapshot.facelets]);
   function changeView(next) {
     try {
       const localStorage = $try(() => window.localStorage);
