@@ -16,7 +16,9 @@ view; Home and the Front/Perspective presets reset it. Camera movement never
 changes the puzzle or move count. Human and agent moves share ordered, eased layer animations;
 shuffles animate their scramble, and rapid clicks speed up queued turns without losing moves.
 Reduced motion presents the final position immediately. Agents inspect the cube
-and submit legal solution moves. After solving, **Replay N moves** watches the
+and submit legal solution moves. An accepted solution immediately starts a short
+confetti burst while the cube keeps animating; reduced motion suppresses it.
+After solving, **Replay N moves** watches the
 current challenge from its starting position through every accepted move,
 including separate command batches. Replay is read-only, can be repeated after
 reload when storage is available, and stops when new live play commits.

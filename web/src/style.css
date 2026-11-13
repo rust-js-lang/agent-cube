@@ -12,3 +12,5 @@
 .replay-button{width:100%;border:1px solid #596749;border-radius:7px;background:#c4f08a09;color:var(--accent);font-size:12px;padding:11px;text-align:left;margin:0 0 4px}.replay-button:hover:not(:disabled){background:#c4f08a15}.replay-button:disabled{cursor:default}
 
 .cube-preview{touch-action:none;cursor:grab;outline-offset:-4px}.cube-preview:active{cursor:grabbing}.cube-preview:focus-visible{outline:2px solid var(--accent)}.stage-bottom{gap:12px;flex-wrap:wrap}.view-controls button{white-space:nowrap}
+
+.confetti{position:fixed;inset:0;z-index:100;overflow:hidden;pointer-events:none}.confetti span{position:absolute;top:-20px;width:9px;height:14px;background:var(--color);border-radius:2px;animation:confetti-fall 2400ms cubic-bezier(.15,.5,.45,1) both}.confetti span:nth-child(3n){width:7px;height:7px;border-radius:50%}@keyframes confetti-fall{0%{transform:translate3d(0,-30px,0) rotate(0);opacity:0}8%{opacity:1}80%{opacity:1}100%{transform:translate3d(var(--sway),105vh,0) rotate(var(--spin));opacity:0}}@media(prefers-reduced-motion:reduce){.confetti{display:none}}

@@ -536,7 +536,7 @@ pub fn Preview(
                     canvas.set_attribute("data-motion", "idle");
                     canvas.set_attribute("data-playback", "live");
                 }
-                window.queue_microtask(Box::new(move || complete(step.snapshot.revision)));
+                window.queue_microtask(Box::new(move || complete(step.id)));
             }
         },
         Some(&(step.id, *problem)),

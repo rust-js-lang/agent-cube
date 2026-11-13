@@ -5,7 +5,7 @@ use std::panic::catch_unwind;
 use std::rc::Rc;
 
 use cube_core::journal::{Action, Command, Turns};
-use cube_core::{Cube, Session, Snapshot};
+use cube_core::{Cube, SOLVED, Session, Snapshot};
 use react::{Dispatch, SetStateAction, dom::flush_sync};
 use webapi::{AbortSignal, BroadcastChannel, window};
 
@@ -26,6 +26,7 @@ pub struct LocalSession {
     channel: RefCell<Option<&'static BroadcastChannel>>,
     publish: &'static Dispatch<SetStateAction<Snapshot>>,
     status: &'static Dispatch<SetStateAction<&'static str>>,
+    celebrate: &'static Dispatch<SetStateAction<Option<u32>>>,
 }
 
 impl LocalSession {
@@ -33,6 +34,7 @@ impl LocalSession {
         publish: &'static Dispatch<SetStateAction<Snapshot>>,
         status: &'static Dispatch<SetStateAction<&'static str>>,
         presentation: &'static Dispatch<SetStateAction<Presentation>>,
+        celebrate: &'static Dispatch<SetStateAction<Option<u32>>>,
     ) -> Self {
         Self {
             inputs: RefCell::new(VecDeque::new()),
@@ -46,6 +48,7 @@ impl LocalSession {
             channel: RefCell::new(None),
             publish,
             status,
+            celebrate,
         }
     }
 
@@ -173,7 +176,16 @@ impl LocalSession {
         match storage.submit(command, signal).await {
             Ok(accepted) => {
                 let revision = accepted.current.revision;
+                let solved = accepted.accepted
+                    && accepted.current.solved
+                    && accepted
+                        .turns
+                        .as_ref()
+                        .is_some_and(|turns| !turns.reset && turns.from != SOLVED);
                 self.present(accepted.current, accepted.turns);
+                if solved {
+                    self.celebrate.set(Some(revision));
+                }
                 if accepted.accepted {
                     self.notify();
                 }

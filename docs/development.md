@@ -54,7 +54,7 @@ artifact on port 4173, use available CPU cores, and launch the pinned Chromium
 with --enable-features=WebMCP enabled. They use Playwright's page.webmcp.tools() and page.webmcp.callTool(), backed by the real document.modelContext API,
 not a substitute registry. Test failure must not silently skip unsupported APIs.
 
-See [TESTS.md](../TESTS.md) for the 50 browser tests, sixteen native and generated-JavaScript tests, 64 parity probes, and sixteen mutation checks.
+See [TESTS.md](../TESTS.md) for the 55 browser tests, sixteen native and generated-JavaScript tests, 64 parity probes, and eighteen mutation checks.
 
 ## Current scope
 

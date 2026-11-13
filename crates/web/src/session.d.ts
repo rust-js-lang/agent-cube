@@ -14,10 +14,11 @@ export interface LocalSession {
     channel?: BroadcastChannel | undefined;
     publish: any;
     status: any;
+    celebrate: any;
 }
 
 export const LocalSession: {
-    "new"(publish: any, status: any, presentation: any): LocalSession;
+    "new"(publish: any, status: any, presentation: any, celebrate: any): LocalSession;
     ready(localSession: LocalSession): boolean;
     setChannel(localSession: LocalSession, channel?: BroadcastChannel | null | undefined): void;
     initialize(localSession: LocalSession): any;

@@ -79,11 +79,13 @@ pub fn App() -> JSX::Element {
         snapshot: Session::default().snapshot(),
         turns: None,
     });
+    let (celebration, set_celebration) = use_state(|| None::<u32>);
     let (storage, set_storage) = use_state(|| "Loading saved session…");
     let session = use_ref(Rc::new(LocalSession::new(
         set_snapshot,
         set_storage,
         set_presentation,
+        set_celebration,
     )))
     .current();
     let (view, set_view) = use_state(|| {
@@ -106,6 +108,16 @@ pub fn App() -> JSX::Element {
     use_effect(
         move || set_sharing.set("Copy challenge link"),
         Some(&(snapshot.facelets.clone(),)),
+    );
+    use_effect(
+        move || {
+            celebration.map(|_| {
+                let timer =
+                    js::set_timeout(Box::new(move || set_celebration.set(None)), Some(2800.0));
+                move || js::clear_timeout(Some(timer))
+            })
+        },
+        Some(&(*celebration,)),
     );
     let change_view = move |next| {
         let _ = catch_unwind(|| {
@@ -403,6 +415,18 @@ pub fn App() -> JSX::Element {
 
     jsx! {
         <div className="app-shell">
+            {celebration.filter(|revision| *revision == snapshot.revision && snapshot.solved).map(|revision| jsx! {
+                <div className="confetti" key={revision} aria-hidden="true" data-revision={revision.to_string()}>
+                    {(0_u32..48).map(|piece| { let (hex, _) = color(FACES[(piece % 6) as usize]); jsx! {
+                        <span key={piece} style={CSSProperties::new()
+                            .set("left", format!("{}%", piece * 37 % 100))
+                            .set("--color", format!("#{hex:06x}"))
+                            .set("--sway", format!("{}px", (piece * 53 % 241) as i32 - 120))
+                            .set("--spin", format!("{}deg", 180 + piece * 97 % 900))
+                            .set("animationDelay", format!("{}ms", piece % 8 * 25))} />
+                    } }).collect::<Vec<_>>()}
+                </div>
+            })}
             <header className="topbar">
                 <a className="brand" href="./" aria-label="AgentCube home"><span className="brand-icon" aria-hidden="true">{"◇"}</span>{"AgentCube"}</a>
                 <span className="mode-badge"><span className="status-dot" />{"LOCAL PLAY"}</span>

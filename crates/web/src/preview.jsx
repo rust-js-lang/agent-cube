@@ -482,7 +482,7 @@ export function Preview({ view, cameraReset, snap, step, complete, detach, pace 
         canvas$1.setAttribute("data-motion", "idle");
         canvas$1.setAttribute("data-playback", "live");
       }
-      const captured = step.snapshot.revision;
+      const captured = step.id;
       window.queueMicrotask(() => {
         complete(captured);
       });

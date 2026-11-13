@@ -21,6 +21,7 @@ import {
   $copyOf,
   $debugJsonError,
   $f64ToInt,
+  $index,
   $iter,
   $lent,
   $settle,
@@ -88,8 +89,11 @@ export function App() {
     replay: false,
     snapshot: Session.snapshot({ cube: cubeDefault_default(), revision: 0, moveCount: 0 }),
   }));
+  const [celebration, setCelebration] = useState(undefined);
   const [storage, setStorage] = useState("Loading saved session…");
-  const session = useRef(LocalSession.new(setSnapshot, setStorage, setPresentation)).current;
+  const session = useRef(
+    LocalSession.new(setSnapshot, setStorage, setPresentation, setCelebration),
+  ).current;
   const [view, setView] = useState(() => {
     const result = $catchUnwind(() => {
       const result = $try(() => window.localStorage);
@@ -106,6 +110,15 @@ export function App() {
   const [replaying, setReplaying] = useState(false);
   const [sharing, setSharing] = useState("Copy challenge link");
   useEffect(() => setSharing("Copy challenge link"), [snapshot.facelets]);
+  useEffect(() => {
+    function map() {
+      const timer = setTimeout(() => setCelebration(undefined), 2800);
+      return () => {
+        clearTimeout(timer);
+      };
+    }
+    return celebration != null ? map(celebration) : undefined;
+  }, [celebration]);
   function changeView(next) {
     try {
       const localStorage = $try(() => window.localStorage);
@@ -380,6 +393,27 @@ export function App() {
   const detach = () => Presentations.interrupt(session.presentations);
   const pace = session.presentations.pace;
   const colors = Array.from(snapshot.facelets);
+  const condition = celebration != null && celebration === snapshot.revision && snapshot.solved;
+  let dataRevision;
+  let children;
+  if (condition) {
+    dataRevision = String(celebration);
+    children = Array.from({ length: 48 }, (_, piece) => {
+      const [hex] = color($index(FACES.slice(), piece % 6));
+      return (
+        <span
+          key={piece}
+          style={{
+            left: `${((piece * 37) >>> 0) % 100}%`,
+            "--color": `#${hex.toString(16).padStart(6, "0")}`,
+            "--sway": `${(((piece * 53) >>> 0) % 241) - 120}px`,
+            "--spin": `${180 + (((piece * 97) >>> 0) % 900)}deg`,
+            animationDelay: `${(piece % 8) * 25}ms`,
+          }}
+        />
+      );
+    });
+  }
   const step = {
     ...presentation,
     snapshot: { ...presentation.snapshot },
@@ -388,7 +422,7 @@ export function App() {
         ? presentation.turns
         : { ...presentation.turns, moves: presentation.turns.moves.map((item) => ({ ...item })) },
   };
-  const children = FACES.slice().map((face) => (
+  const children$1 = FACES.slice().map((face) => (
     <div className="move-column" key={face}>
       {["", "'", "2"].map((suffix) => {
         const movement = face + suffix;
@@ -412,10 +446,10 @@ export function App() {
   ));
   const value = snapshot.solved && snapshot.moveCount > 0;
   let disabled;
-  let children$1;
+  let children$2;
   if (value) {
     disabled = !ready || snapshot.moveCount === 0 || replaying;
-    children$1 = replaying
+    children$2 = replaying
       ? "Replaying…"
       : snapshot.moveCount === 0
         ? "Replay moves"
@@ -424,6 +458,11 @@ export function App() {
 
   return (
     <div className="app-shell">
+      {condition && (
+        <div className="confetti" key={celebration} aria-hidden="true" data-revision={dataRevision}>
+          {children}
+        </div>
+      )}
       <header className="topbar">
         <a className="brand" href="./" aria-label="AgentCube home">
           <span className="brand-icon" aria-hidden="true">
@@ -511,7 +550,7 @@ export function App() {
               Shuffle cube ↗
             </button>
             <div className="move-controls" role="group" aria-label="Face turns">
-              {children}
+              {children$1}
             </div>
             <p className="notation-note">Clockwise from outside · ' inverse · 2 half turn</p>
             {value && (
@@ -529,7 +568,7 @@ export function App() {
                   })();
                 }}
               >
-                {children$1}
+                {children$2}
               </button>
             )}
             {problem != null && <p role="alert">{problem}</p>}
