@@ -10,6 +10,7 @@ import {
 } from "../../cube-core/src/journal.js";
 import {
   Cube,
+  SOLVED,
   Session as Session$1,
   cubeDefault_default,
   parseMoves,
@@ -28,8 +29,11 @@ import {
   $f64ToInt,
   $fromJson,
   $index,
+  $iter,
   $roomFor,
+  $rposition,
   $settle,
+  $slice,
   $toJson,
   $unborrow,
 } from "@rust-js/std";
@@ -83,9 +87,37 @@ function decode(text) {
   }
   return { TAG: "Ok", _0: journalDefault.default() };
 }
-
 function cancelled(signal) {
   return signal != null && signal.aborted;
+}
+
+function apply(session, entry) {
+  const result = Command.validate(entry.command);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  if (Session$1.snapshot(session).revision !== entry.command.expectedRevision) {
+    return {
+      TAG: "Err",
+      _0: "Stale revision. Read the cube again before submitting a new command.",
+    };
+  }
+  if (entry.command.action.TAG === "Load") {
+    if (entry.seed == null) {
+      const facelets = entry.command.action._0;
+      return Session.load(session, facelets, entry.command.expectedRevision);
+    }
+  } else if (entry.command.action.TAG === "Moves") {
+    if (entry.seed == null) {
+      const moves = entry.command.action._0;
+      return Session.applyMoves(session, moves, entry.command.expectedRevision);
+    }
+  } else if (entry.seed != null) {
+    const length = entry.command.action._0;
+    const seed = entry.seed;
+    return Session.shuffle(session, seed, length);
+  }
+  return { TAG: "Err", _0: "Invalid saved command seed." };
 }
 
 export const Storage = {
@@ -93,16 +125,15 @@ export const Storage = {
     return storage.TAG === "IndexedDb";
   },
 
-  async transact(storage, command, signal) {
+  async transact(storage, write, signal, action) {
     if (cancelled(signal)) {
       return { TAG: "Err", _0: "Request cancelled before acceptance." };
     }
-    const seed = $f64ToInt(Math.random() * 4294967295, 0, 4294967295);
     if (storage.TAG === "Temporary") {
       const borrow = $borrow(storage._0, true);
-      let proposal;
+      let journal;
       try {
-        proposal = {
+        journal = {
           ...borrow,
           entries: borrow.entries.map((item) => ({
             ...item,
@@ -112,15 +143,17 @@ export const Storage = {
       } finally {
         $unborrow(borrow);
       }
-      const result = propose(proposal, command, seed);
+      const result = action(journal);
       if (result.TAG === "Err") {
         return result;
       }
-      const accepted = result._0;
-      $assign($borrowMut(storage._0), proposal);
-      return { TAG: "Ok", _0: accepted };
+      const proposal = result._0;
+      if (proposal.changed) {
+        $assign($borrowMut(storage._0), journal);
+      }
+      return { TAG: "Ok", _0: proposal.value };
     } else {
-      const mode = command != null ? "readwrite" : "readonly";
+      const mode = write ? "readwrite" : "readonly";
       const result = $catchUnwind(() =>
         storage._0.transaction(STORE, mode, { durability: "strict" }),
       );
@@ -153,17 +186,17 @@ export const Storage = {
         if (result$2.TAG === "Err") {
           return result$2;
         }
-        const proposal = result$2._0;
-        const result$3 = propose(proposal, command, seed);
+        const journal = result$2._0;
+        const result$3 = action(journal);
         if (result$3.TAG === "Err") {
           return result$3;
         }
-        const accepted = result$3._0;
-        if (accepted.accepted) {
+        const proposal = result$3._0;
+        if (proposal.changed) {
           if (cancelled(signal)) {
             return { TAG: "Err", _0: "Request cancelled before acceptance." };
           }
-          const result = $toJson(proposal, journalSerialize_serialize, false);
+          const result = $toJson(journal, journalSerialize_serialize, false);
           const result$1 =
             result.TAG === "Err" ? { TAG: "Err", _0: "Could not encode the session." } : result;
           if (result$1.TAG === "Err") {
@@ -185,7 +218,7 @@ export const Storage = {
             return result$3;
           }
         }
-        return { TAG: "Ok", _0: accepted };
+        return { TAG: "Ok", _0: proposal.value };
       })();
       const result$3 = await $settle(operation);
       const result$2 =
@@ -205,11 +238,51 @@ export const Storage = {
   },
 
   async read(storage) {
-    const result$4 = await Storage.transact(storage);
-    return result$4.TAG === "Ok" ? { TAG: "Ok", _0: result$4._0.current } : result$4;
+    return await Storage.transact(storage, false, undefined, (journal) => {
+      const result$3 = Journal.snapshot(journal);
+      if (result$3.TAG === "Err") {
+        return result$3;
+      }
+      return {
+        TAG: "Ok",
+        _0: {
+          value: result$3._0,
+          changed: false,
+        },
+      };
+    });
+  },
+  async playback(storage) {
+    return await Storage.transact(storage, false, undefined, (journal) => {
+      const result$3 = Journal.playback(journal);
+      if (result$3.TAG === "Err") {
+        return result$3;
+      }
+      return {
+        TAG: "Ok",
+        _0: {
+          value: result$3._0,
+          changed: false,
+        },
+      };
+    });
   },
   async submit(storage, command, signal) {
-    return await Storage.transact(storage, command, signal);
+    const seed = $f64ToInt(Math.random() * 4294967295, 0, 4294967295);
+    return await Storage.transact(storage, true, signal, (journal) => {
+      const result$3 = Journal.accept(journal, command, seed);
+      if (result$3.TAG === "Err") {
+        return result$3;
+      }
+      const accepted = result$3._0;
+      return {
+        TAG: "Ok",
+        _0: {
+          changed: accepted.accepted,
+          value: accepted,
+        },
+      };
+    });
   },
 };
 
@@ -217,6 +290,32 @@ const Journal = {
   snapshot(journal) {
     const result$1 = Journal.replay(journal);
     return result$1.TAG === "Ok" ? { TAG: "Ok", _0: Session$1.snapshot(result$1._0[0]) } : result$1;
+  },
+  playback(journal) {
+    const result$1 = Journal.replay(journal);
+    if (result$1.TAG === "Err") {
+      return result$1;
+    }
+    const [session, receipts] = result$1._0;
+    const boundary = $rposition(
+      $iter(journal.entries),
+      (entry) => entry.command.action.TAG !== "Moves",
+    );
+    const from = boundary != null ? $index(receipts, boundary).facelets : SOLVED;
+    const moves = [];
+    for (const entry of $slice(journal.entries, boundary != null ? (boundary + 1) >>> 0 : 0)) {
+      if (entry.command.action.TAG === "Moves") {
+        const text = entry.command.action._0;
+        const result = parseMoves(text);
+        if (result.TAG === "Err") {
+          return result;
+        }
+        for (let i = 0; i < result._0.length; i++) {
+          moves.push(result._0[i]);
+        }
+      }
+    }
+    return { TAG: "Ok", _0: { snapshot: Session$1.snapshot(session), turns: { from, moves } } };
   },
   accept(journal, command, seed) {
     let tmp = true;
@@ -423,53 +522,4 @@ const Session = {
     return { TAG: "Ok", _0: Session$1.snapshot(session) };
   },
 };
-
-function propose(journal, command, seed) {
-  if (command != null) {
-    return Journal.accept(journal, command, seed);
-  } else {
-    const result = Journal.snapshot(journal);
-    if (result.TAG === "Err") {
-      return result;
-    }
-    const snapshot = result._0;
-    return {
-      TAG: "Ok",
-      _0: {
-        receipt: { ...snapshot },
-        current: snapshot,
-        accepted: false,
-      },
-    };
-  }
-}
-
-function apply(session, entry) {
-  const result = Command.validate(entry.command);
-  if (result.TAG === "Err") {
-    return result;
-  }
-  if (Session$1.snapshot(session).revision !== entry.command.expectedRevision) {
-    return {
-      TAG: "Err",
-      _0: "Stale revision. Read the cube again before submitting a new command.",
-    };
-  }
-  if (entry.command.action.TAG === "Load") {
-    if (entry.seed == null) {
-      const facelets = entry.command.action._0;
-      return Session.load(session, facelets, entry.command.expectedRevision);
-    }
-  } else if (entry.command.action.TAG === "Moves") {
-    if (entry.seed == null) {
-      const moves = entry.command.action._0;
-      return Session.applyMoves(session, moves, entry.command.expectedRevision);
-    }
-  } else if (entry.seed != null) {
-    const length = entry.command.action._0;
-    const seed = entry.seed;
-    return Session.shuffle(session, seed, length);
-  }
-  return { TAG: "Err", _0: "Invalid saved command seed." };
-}
 //# sourceMappingURL=storage.js.map

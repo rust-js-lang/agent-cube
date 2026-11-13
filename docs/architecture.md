@@ -215,6 +215,14 @@ browser presentation queue consumes them after commit. Snapshots recovered from
 reload, links or another tab snap directly; they do not invent missed move events.
 See ADR 0004 for exact animation and interruption behavior.
 
+Read-only replay derives its origin and ordered moves from the validated saved
+journal after the latest challenge reset. It uses a distinct presentation ID, not
+a game revision, so the same challenge can replay repeatedly. Replay never
+submits commands, changes counters, writes a receipt or updates the URL. New
+committed play interrupts it and takes visual precedence. Position links remain
+position-only: a recipient does not receive the sender's replay history.
+See ADR 0005 for replay behavior and recovery.
+
 ## Browser interface
 
 Use rust-js with React for controls and Three.js directly through typed bindings

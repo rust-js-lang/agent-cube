@@ -66,8 +66,10 @@ retries never duplicate moves, and reload restores the committed state.
 
 Played-turn animation is implemented: rounded cubies, layer rotation, exact
 snapping, ordered presentation, reduced motion, bounded batches and recovery
-from stalled frames or graphics loss. Human and WebMCP inputs share it. Timing,
-playback controls, keyboard input, PWA caching and installation remain outstanding.
+from stalled frames or graphics loss. Human and WebMCP inputs share it. A read-only Replay N moves button now replays
+the whole current challenge, including multiple batches and saved reloads.
+Timing, pause/speed controls, keyboard input, PWA caching and installation remain
+outstanding.
 
 - Render the 3D cube with typed bindings and camera controls.
 - Animate face turns from accepted events, snapping to exact state afterward.

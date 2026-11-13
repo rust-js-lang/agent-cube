@@ -6,6 +6,7 @@ const cases = [
   { file: "preview.rs", find: "Some(&()),", replacement: "Some(&(view,)),", test: "without recreating WebGL", assertion: /toBe\(calls\)|The cube must contain real colored sticker pixels/ },
   { file: "storage.rs", find: "completion.await?;", replacement: "let _ = completion.await;", test: "an aborted transaction", assertion: /Expected: true/ },
   { file: "preview.rs", find: "f64::from(normal[0]) * angle,\n            f64::from(normal[1]) * angle,\n            f64::from(normal[2]) * angle,", replacement: "0.0, 0.0, 0.0,", test: "the middle of a face turn", assertion: /A halfway turn must move actual cubie pixels/ },
+  { file: "preview.rs", find: "Some(&(step.id, *problem))", replacement: "Some(&(step.snapshot.revision, *problem))", test: "a 22-move solution replays", assertion: /Expected: \"replay\"/ },
 ];
 async function run(command: string[], timeout: number) {
   const child = Bun.spawn(command, { cwd: root, stdout: "pipe", stderr: "pipe" });

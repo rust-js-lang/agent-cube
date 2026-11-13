@@ -12,7 +12,10 @@ shuffling, a six-face view, animated Three.js cubies with a working no-WebGL vie
 and native WebMCP tools. Rounded cubies and glossy plastic give each face turn
 visible depth. Human and agent moves share ordered, eased layer animations;
 reduced motion presents the final position immediately. Agents inspect the cube
-and submit legal solution moves.
+and submit legal solution moves. After playing, **Replay N moves** watches the
+current challenge from its starting position through every accepted move,
+including separate command batches. Replay is read-only, can be repeated after
+reload when storage is available, and stops when new live play commits.
 
 Open [AgentCube](https://rust-js-lang.github.io/agent-cube/). Sessions and retry
 receipts are saved in IndexedDB. Copy the address or use **Copy challenge link**

@@ -4,7 +4,7 @@ use std::panic::catch_unwind;
 use std::rc::Rc;
 
 use cube_core::Snapshot;
-use cube_core::journal::{Acceptance, Command, Journal};
+use cube_core::journal::{Acceptance, Command, Journal, Playback};
 use js::{promise, settle};
 use webapi::AbortSignal;
 
@@ -18,6 +18,11 @@ const KEY: &str = "active";
 pub enum Storage {
     IndexedDb(&'static Database),
     Temporary(Rc<RefCell<Journal>>),
+}
+
+struct Proposal<T> {
+    value: T,
+    changed: bool,
 }
 
 pub async fn open() -> Result<Storage, String> {
@@ -63,7 +68,6 @@ fn decode(text: Option<String>) -> Result<Journal, String> {
         None => Ok(Journal::default()),
     }
 }
-
 fn cancelled(signal: Option<&AbortSignal>) -> bool {
     signal.is_some_and(|signal| signal.aborted())
 }
@@ -73,28 +77,26 @@ impl Storage {
         matches!(self, Self::IndexedDb(_))
     }
 
-    async fn transact(
+    async fn transact<T>(
         &self,
-        command: Option<Command>,
+        write: bool,
         signal: Option<&'static AbortSignal>,
-    ) -> Result<Acceptance, String> {
+        action: impl FnOnce(&mut Journal) -> Result<Proposal<T>, String>,
+    ) -> Result<T, String> {
         if cancelled(signal) {
             return Err("Request cancelled before acceptance.".into());
         }
-        let seed = (js::math::random() * f64::from(u32::MAX)) as u32;
         match self {
             Self::Temporary(saved) => {
-                let mut proposal = saved.borrow().clone();
-                let accepted = propose(&mut proposal, command, seed)?;
-                *saved.borrow_mut() = proposal;
-                Ok(accepted)
+                let mut journal = saved.borrow().clone();
+                let proposal = action(&mut journal)?;
+                if proposal.changed {
+                    *saved.borrow_mut() = journal;
+                }
+                Ok(proposal.value)
             }
             Self::IndexedDb(db) => {
-                let mode = if command.is_some() {
-                    "readwrite"
-                } else {
-                    "readonly"
-                };
+                let mode = if write { "readwrite" } else { "readonly" };
                 let transaction = catch_unwind(|| {
                     db.transaction(
                         STORE,
@@ -117,13 +119,13 @@ impl Storage {
                     let text = settle(store.get::<String>(KEY))
                         .await
                         .map_err(|_| "Could not read the saved session.".to_string())?;
-                    let mut proposal = decode(text)?;
-                    let accepted = propose(&mut proposal, command, seed)?;
-                    if accepted.accepted {
+                    let mut journal = decode(text)?;
+                    let proposal = action(&mut journal)?;
+                    if proposal.changed {
                         if cancelled(signal) {
                             return Err("Request cancelled before acceptance.".into());
                         }
-                        let text = serde_json::to_string(&proposal)
+                        let text = serde_json::to_string(&journal)
                             .map_err(|_| "Could not encode the session.".to_string())?;
                         if text.len() > MAX_JSON_BYTES {
                             return Err(
@@ -135,7 +137,7 @@ impl Storage {
                             "Could not save the command. Retry with the same commandId.".to_string()
                         })?;
                     }
-                    Ok(accepted)
+                    Ok(proposal.value)
                 });
                 let result = settle(operation)
                     .await
@@ -148,32 +150,36 @@ impl Storage {
     }
 
     pub async fn read(&self) -> Result<Snapshot, String> {
-        self.transact(None, None).await.map(|result| result.current)
+        self.transact(false, None, |journal| {
+            Ok(Proposal {
+                value: journal.snapshot()?,
+                changed: false,
+            })
+        })
+        .await
+    }
+    pub async fn playback(&self) -> Result<Playback, String> {
+        self.transact(false, None, |journal| {
+            Ok(Proposal {
+                value: journal.playback()?,
+                changed: false,
+            })
+        })
+        .await
     }
     pub async fn submit(
         &self,
         command: Command,
         signal: Option<&'static AbortSignal>,
     ) -> Result<Acceptance, String> {
-        self.transact(Some(command), signal).await
-    }
-}
-
-fn propose(
-    journal: &mut Journal,
-    command: Option<Command>,
-    seed: u32,
-) -> Result<Acceptance, String> {
-    match command {
-        Some(command) => journal.accept(command, seed),
-        None => {
-            let snapshot = journal.snapshot()?;
-            Ok(Acceptance {
-                receipt: snapshot.clone(),
-                current: snapshot,
-                accepted: false,
-                turns: None,
+        let seed = (js::math::random() * f64::from(u32::MAX)) as u32;
+        self.transact(true, signal, move |journal| {
+            let accepted = journal.accept(command, seed)?;
+            Ok(Proposal {
+                changed: accepted.accepted,
+                value: accepted,
             })
-        }
+        })
+        .await
     }
 }

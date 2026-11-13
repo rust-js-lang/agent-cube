@@ -36,3 +36,39 @@ export async function cubePixels(page: Page, minColors = 1) {
   expect([...counts.values()].filter(count => count > 100).length).toBeGreaterThanOrEqual(minColors);
 }
 
+
+export async function controlFrames(page: Page) {
+  await page.addInitScript(() => {
+    let next = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    window.requestAnimationFrame = callback => { const id = ++next; frames.set(id, callback); return id; };
+    window.cancelAnimationFrame = id => { frames.delete(id); };
+    Object.assign(window, {
+      __stepFrame(time: number) { const pending = [...frames.values()]; frames.clear(); for (const callback of pending) callback(time); },
+      __pendingFrames() { return frames.size; },
+    });
+  });
+}
+
+export async function frame(page: Page, time: number) {
+  await page.evaluate(time => Reflect.get(window, "__stepFrame")(time), time);
+}
+
+
+export async function savedText(page: Page) {
+  return page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("agent-cube", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise<string | undefined>((resolve, reject) => {
+        const request = db.transaction("practice").objectStore("practice").get("active");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    } finally { db.close(); }
+  });
+}
+

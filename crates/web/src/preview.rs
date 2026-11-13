@@ -34,6 +34,7 @@ struct Motion {
     prepared: bool,
     target: String,
     revision: u32,
+    presentation_id: u32,
     complete: Rc<dyn Fn(u32)>,
 }
 
@@ -152,7 +153,8 @@ impl Drawing {
         self.canvas
             .set_attribute("data-visual-revision", motion.revision.to_string());
         self.draw();
-        (motion.complete)(motion.revision);
+        self.canvas.set_attribute("data-playback", "live");
+        (motion.complete)(motion.presentation_id);
     }
 
     fn finish_now(&self) {
@@ -213,6 +215,8 @@ impl Drawing {
 
     fn begin(self: &Rc<Self>, step: Presentation, complete: Rc<dyn Fn(u32)>) {
         self.finish_now();
+        self.canvas
+            .set_attribute("data-playback", if step.replay { "replay" } else { "live" });
         let turns = step
             .turns
             .filter(|_| !reduced_motion() && !document.hidden());
@@ -222,32 +226,41 @@ impl Drawing {
             self.paint(&turns.from);
             let units: f64 = turns.moves.iter().map(|movement| weight(*movement)).sum();
             self.canvas.set_attribute("data-motion", "turning");
+            let limit = if step.replay { 60_000.0 } else { 2400.0 };
+            let duration = (units * 240.0).min(limit);
+            let deadline_ms = if step.replay {
+                duration.max(2400.0) + 200.0
+            } else {
+                2600.0
+            };
             *self.motion.borrow_mut() = Some(Motion {
                 cube,
                 moves: turns.moves,
                 index: 0,
                 started: None,
                 elapsed: 0.0,
-                unit_duration: 240.0_f64.min(2400.0 / units.max(1.0)),
+                unit_duration: 240.0_f64.min(limit / units.max(1.0)),
                 prepared: false,
                 target: step.snapshot.facelets,
                 revision: step.snapshot.revision,
+                presentation_id: step.id,
                 complete,
             });
             self.draw();
             let deadline = Rc::clone(self);
             self.deadline.set(Some(js::set_timeout(
                 Box::new(move || deadline.finish_now()),
-                Some(2600.0),
+                Some(deadline_ms),
             )));
             self.schedule();
         } else {
             self.paint(&step.snapshot.facelets);
+            self.canvas.set_attribute("data-playback", "live");
             self.canvas.set_attribute("data-motion", "idle");
             self.canvas
                 .set_attribute("data-visual-revision", step.snapshot.revision.to_string());
             self.draw();
-            window.queue_microtask(Box::new(move || complete(step.snapshot.revision)));
+            window.queue_microtask(Box::new(move || complete(step.id)));
         }
     }
 }
@@ -433,11 +446,12 @@ pub fn Preview(
                     canvas
                         .set_attribute("data-visual-revision", step.snapshot.revision.to_string());
                     canvas.set_attribute("data-motion", "idle");
+                    canvas.set_attribute("data-playback", "live");
                 }
                 window.queue_microtask(Box::new(move || complete(step.snapshot.revision)));
             }
         },
-        Some(&(step.snapshot.revision, *problem)),
+        Some(&(step.id, *problem)),
     );
 
     let values: Vec<char> = step.snapshot.facelets.chars().collect();

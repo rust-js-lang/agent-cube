@@ -2,8 +2,18 @@
 
 /** Replayable local practice log. Storage commits a proposed log before publishing it. */
 
-import { Session, cubeDefault_default, parseMoves } from "./lib.js";
-import { $add, $byteLen, $eq, $index, $json, $roomFor } from "@rust-js/std";
+import { SOLVED, Session, cubeDefault_default, parseMoves } from "./lib.js";
+import {
+  $add,
+  $byteLen,
+  $eq,
+  $index,
+  $iter,
+  $json,
+  $roomFor,
+  $rposition,
+  $slice,
+} from "@rust-js/std";
 
 export const MAX_COMMANDS = 4096;
 
@@ -186,6 +196,39 @@ export const Journal = {
   snapshot(journal) {
     const result$1 = Journal.replay(journal);
     return result$1.TAG === "Ok" ? { TAG: "Ok", _0: Session.snapshot(result$1._0[0]) } : result$1;
+  },
+
+  /** The current challenge only: omit its scramble and earlier challenges. */
+  playback(journal) {
+    const result = Journal.replay(journal);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const [session, receipts] = result._0;
+    const boundary = $rposition(
+      $iter(journal.entries),
+      (entry) => entry.command.action.TAG !== "Moves",
+    );
+    const from = boundary != null ? $index(receipts, boundary).facelets : SOLVED;
+    const moves = [];
+    for (const entry of $slice(journal.entries, boundary != null ? (boundary + 1) >>> 0 : 0)) {
+      if (entry.command.action.TAG === "Moves") {
+        const result = parseMoves(entry.command.action._0);
+        if (result.TAG === "Err") {
+          return result;
+        }
+        for (let i = 0; i < result._0.length; i++) {
+          moves.push(result._0[i]);
+        }
+      }
+    }
+    return {
+      TAG: "Ok",
+      _0: {
+        snapshot: Session.snapshot(session),
+        turns: { from, moves },
+      },
+    };
   },
 
   /** This changes only the proposed journal; the adapter must commit it atomically. */

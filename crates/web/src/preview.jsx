@@ -121,7 +121,8 @@ const Drawing = {
     drawing.canvas.setAttribute("data-turn-angle", "0");
     drawing.canvas.setAttribute("data-visual-revision", String(motion.revision));
     Drawing.draw(drawing);
-    (0, motion.complete)(motion.revision);
+    drawing.canvas.setAttribute("data-playback", "live");
+    (0, motion.complete)(motion.presentationId);
   },
 
   finishNow(drawing) {
@@ -187,6 +188,7 @@ const Drawing = {
 
   begin(drawing, step, complete) {
     Drawing.finishNow(drawing);
+    drawing.canvas.setAttribute("data-playback", step.replay ? "replay" : "live");
     const turns =
       step.turns != null && !reducedMotion() && !document.hidden ? step.turns : undefined;
     if (turns != null) {
@@ -197,28 +199,33 @@ const Drawing = {
           .map((movement) => weight({ ...movement }))
           .reduce((a, b) => a + b, -0);
         drawing.canvas.setAttribute("data-motion", "turning");
+        const limit = step.replay ? 60000 : 2400;
+        const duration = $f64Min(units * 240, limit);
+        const deadlineMs = step.replay ? $f64Max(duration, 2400) + 200 : 2600;
         drawing.motion = {
           cube: value._0,
           moves: turns.moves,
           index: 0,
           elapsed: 0,
-          unitDuration: $f64Min(240, 2400 / $f64Max(units, 1)),
+          unitDuration: $f64Min(240, limit / $f64Max(units, 1)),
           prepared: false,
           target: step.snapshot.facelets,
           revision: step.snapshot.revision,
+          presentationId: step.id,
           complete,
         };
         Drawing.draw(drawing);
-        drawing.deadline = setTimeout(() => Drawing.finishNow(drawing), 2600);
+        drawing.deadline = setTimeout(() => Drawing.finishNow(drawing), deadlineMs);
         Drawing.schedule(drawing);
         return;
       }
     }
     Drawing.paint(drawing, step.snapshot.facelets);
+    drawing.canvas.setAttribute("data-playback", "live");
     drawing.canvas.setAttribute("data-motion", "idle");
     drawing.canvas.setAttribute("data-visual-revision", String(step.snapshot.revision));
     Drawing.draw(drawing);
-    const captured = step.snapshot.revision;
+    const captured = step.id;
     window.queueMicrotask(() => {
       complete(captured);
     });
@@ -413,13 +420,14 @@ export function Preview({ view, step, complete, detach }) {
         canvas$1.setAttribute("data-presented-facelets", step.snapshot.facelets);
         canvas$1.setAttribute("data-visual-revision", String(step.snapshot.revision));
         canvas$1.setAttribute("data-motion", "idle");
+        canvas$1.setAttribute("data-playback", "live");
       }
       const captured = step.snapshot.revision;
       window.queueMicrotask(() => {
         complete(captured);
       });
     }
-  }, [step.snapshot.revision, problem]);
+  }, [step.id, problem]);
 
   const values = Array.from(step.snapshot.facelets);
   return (

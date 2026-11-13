@@ -16,6 +16,7 @@ const cases = [
   { file: "lib.rs", name: "impossible-corner-twist-accepted", find: "corners.orientation_sum % 3 != 0", replacement: "false" },
   { file: "lib.rs", name: "impossible-edge-flip-accepted", find: "edges.orientation_sum % 2 != 0", replacement: "false" },
   { file: "journal.rs", name: "retry-not-recognized", find: "entry.command.command_id == command.command_id", replacement: "false" },
+  { file: "journal.rs", name: "replay-includes-prior-challenges", find: ".rposition(", replacement: ".position(" },
 ];
 
 await Promise.all(cases.map(async mutation => {

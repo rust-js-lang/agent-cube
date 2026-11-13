@@ -42,6 +42,11 @@ pub struct Turns {
     pub moves: Vec<Move>,
 }
 
+pub struct Playback {
+    pub snapshot: Snapshot,
+    pub turns: Turns,
+}
+
 pub struct Acceptance {
     /// The original receipt, including when retried after newer commands.
     pub receipt: Snapshot,
@@ -111,6 +116,29 @@ impl Journal {
         self.replay().map(|(session, _)| session.snapshot())
     }
 
+    /// The current challenge only: omit its scramble and earlier challenges.
+    pub fn playback(&self) -> Result<Playback, String> {
+        let (session, receipts) = self.replay()?;
+        let boundary = self
+            .entries
+            .iter()
+            .rposition(|entry| !matches!(entry.command.action, Action::Moves(_)));
+        let from = boundary.map_or_else(
+            || crate::SOLVED.to_string(),
+            |index| receipts[index].facelets.clone(),
+        );
+        let mut moves = Vec::new();
+        for entry in &self.entries[boundary.map_or(0, |index| index + 1)..] {
+            if let Action::Moves(text) = &entry.command.action {
+                moves.extend(parse_moves(text)?);
+            }
+        }
+        Ok(Playback {
+            snapshot: session.snapshot(),
+            turns: Turns { from, moves },
+        })
+    }
+
     /// This changes only the proposed journal; the adapter must commit it atomically.
     pub fn accept(&mut self, command: Command, seed: u32) -> Result<Acceptance, String> {
         command.validate()?;
@@ -168,6 +196,62 @@ mod tests {
             expected_revision: revision,
             action: Action::Moves(moves.into()),
         }
+    }
+
+    #[test]
+    fn playback_joins_batches_once_and_starts_after_the_last_challenge_reset() {
+        let mut log = Journal::default();
+        log.accept(moves("old", 0, "F"), 0).unwrap();
+        let start = log
+            .accept(
+                Command {
+                    command_id: "shuffle".into(),
+                    expected_revision: 1,
+                    action: Action::Shuffle(20),
+                },
+                42,
+            )
+            .unwrap()
+            .current;
+        let first = moves("one", 2, "R U");
+        log.accept(first.clone(), 0).unwrap();
+        log.accept(first, 0).unwrap();
+        log.accept(moves("two", 3, "F' D2"), 0).unwrap();
+        let playback = log.playback().unwrap();
+        assert_eq!(playback.turns.from, start.facelets);
+        assert_eq!(playback.turns.moves.len(), 4);
+        assert_eq!(playback.snapshot.move_count, 4);
+        let mut cube = crate::Cube::from_facelets(&playback.turns.from).unwrap();
+        for movement in playback.turns.moves {
+            cube.apply(movement);
+        }
+        assert_eq!(cube.facelets(), playback.snapshot.facelets);
+        assert_eq!(log.snapshot().unwrap().revision, 4);
+        log.accept(
+            Command {
+                command_id: "new-link".into(),
+                expected_revision: 4,
+                action: Action::Load(crate::SOLVED.into()),
+            },
+            0,
+        )
+        .unwrap();
+        assert!(log.playback().unwrap().turns.moves.is_empty());
+        log.accept(moves("new", 5, "B2"), 0).unwrap();
+        assert_eq!(log.playback().unwrap().turns.from, crate::SOLVED);
+        assert_eq!(log.playback().unwrap().turns.moves.len(), 1);
+    }
+
+    #[test]
+    fn playback_without_a_reset_starts_solved_and_rejects_corrupt_history() {
+        let mut log = Journal::default();
+        assert!(log.playback().unwrap().turns.moves.is_empty());
+        log.accept(moves("one", 0, "R U2"), 0).unwrap();
+        let playback = log.playback().unwrap();
+        assert_eq!(playback.turns.from, crate::SOLVED);
+        assert_eq!(playback.turns.moves.len(), 2);
+        log.version = 2;
+        assert!(log.playback().is_err());
     }
 
     #[test]

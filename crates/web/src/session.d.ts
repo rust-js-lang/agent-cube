@@ -21,6 +21,7 @@ export const LocalSession: {
     setChannel(localSession: LocalSession, channel?: BroadcastChannel | null | undefined): void;
     initialize(localSession: LocalSession): any;
     read(localSession: LocalSession): any;
+    replay(localSession: LocalSession): any;
     submit(localSession: LocalSession, command: Command, signal?: AbortSignal | null | undefined): any;
     loadLink(localSession: LocalSession): any;
 };

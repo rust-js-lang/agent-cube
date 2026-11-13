@@ -106,6 +106,22 @@ export const LocalSession = {
     return { TAG: "Ok", _0: snapshot };
   },
 
+  async replay(localSession) {
+    const result = LocalSession.backend(localSession);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const result$1 = await Storage.playback(result._0);
+    if (result$1.TAG === "Err") {
+      return result$1;
+    }
+    const playback = result$1._0;
+    const revision = playback.snapshot.revision;
+    LocalSession.present(localSession, { ...playback.snapshot });
+    await Presentations.wait(localSession.presentations, revision);
+    return await Presentations.replay(localSession.presentations, playback);
+  },
+
   async submit(localSession, command, signal) {
     const result = LocalSession.backend(localSession);
     if (result.TAG === "Err") {

@@ -1,28 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import ReferenceCube from "../reference/cubejs/index.js";
-import { initialUrl, solved, visibleState } from "./helpers";
+import { controlFrames, frame, initialUrl, visibleState } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   // Control only RAF, leaving IndexedDB and React scheduling real. No arbitrary sleeps.
-  await page.addInitScript(() => {
-    let next = 0;
-    const frames = new Map<number, FrameRequestCallback>();
-    window.requestAnimationFrame = callback => { const id = ++next; frames.set(id, callback); return id; };
-    window.cancelAnimationFrame = id => { frames.delete(id); };
-    Object.assign(window, {
-      __stepFrame(time: number) { const pending = [...frames.values()]; frames.clear(); for (const callback of pending) callback(time); },
-      __pendingFrames() { return frames.size; },
-    });
-  });
+  await controlFrames(page);
   await page.goto(initialUrl);
   await expect(page.getByTestId("agent-status")).toHaveText("Ready · 4 tools");
   await expect(page.locator("canvas")).toHaveAttribute("data-motion", "idle");
 });
-
-async function frame(page: Page, time: number) {
-  await page.evaluate(time => Reflect.get(window, "__stepFrame")(time), time);
-}
 
 function pixelChanges(first: Buffer, second: Buffer) {
   const a = PNG.sync.read(first), b = PNG.sync.read(second);

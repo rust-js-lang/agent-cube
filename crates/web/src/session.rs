@@ -95,6 +95,14 @@ impl LocalSession {
         Ok(snapshot)
     }
 
+    pub async fn replay(&self) -> Result<(), String> {
+        let playback = self.backend()?.playback().await?;
+        let revision = playback.snapshot.revision;
+        self.present(playback.snapshot.clone(), None);
+        self.presentations.wait(revision).await;
+        self.presentations.replay(playback).await
+    }
+
     pub async fn submit(
         &self,
         command: Command,

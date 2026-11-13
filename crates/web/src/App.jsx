@@ -84,6 +84,8 @@ export function App() {
     Session.snapshot({ cube: cubeDefault_default(), revision: 0, moveCount: 0 }),
   );
   const [presentation, setPresentation] = useState(() => ({
+    id: 0,
+    replay: false,
     snapshot: Session.snapshot({ cube: cubeDefault_default(), revision: 0, moveCount: 0 }),
   }));
   const [storage, setStorage] = useState("Loading saved session…");
@@ -99,6 +101,7 @@ export function App() {
     return option$1 != null ? "front" : "perspective";
   });
   const [problem, setProblem] = useState(undefined);
+  const [replaying, setReplaying] = useState(false);
   const [sharing, setSharing] = useState("Copy challenge link");
   useEffect(() => setSharing("Copy challenge link"), [snapshot.facelets]);
   function changeView(next) {
@@ -447,7 +450,7 @@ export function App() {
             <h2>Your move.</h2>
             <div className="game-status" role="status" data-testid="cube-status">
               {snapshot.solved ? "Solved" : "In progress"}
-              <span>{`${snapshot.moveCount} moves`}</span>
+              <span>{`${snapshot.moveCount} ${snapshot.moveCount === 1 ? "move" : "moves"}`}</span>
             </div>
             <button
               className="shuffle-button"
@@ -495,6 +498,26 @@ export function App() {
               ))}
             </div>
             <p className="notation-note">Clockwise from outside · ' inverse · 2 half turn</p>
+            <button
+              className="replay-button"
+              type="button"
+              disabled={!ready || snapshot.moveCount === 0 || replaying}
+              title="Watch this challenge from its starting position"
+              onClick={() => {
+                setReplaying(true);
+                (async () => {
+                  const result = await LocalSession.replay(session);
+                  setProblem(result.TAG === "Err" ? result._0 : undefined);
+                  setReplaying(false);
+                })();
+              }}
+            >
+              {replaying
+                ? "Replaying…"
+                : snapshot.moveCount === 0
+                  ? "Replay moves"
+                  : `Replay ${snapshot.moveCount} ${snapshot.moveCount === 1 ? "move" : "moves"}`}
+            </button>
             {problem != null && <p role="alert">{problem}</p>}
             <dl className="status-list">
               <div>

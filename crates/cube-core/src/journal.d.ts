@@ -33,12 +33,18 @@ export interface Journal {
 
 export const Journal: {
     snapshot(journal: Journal): any;
+    playback(journal: Journal): any;
     accept(journal: Journal, command: Command, seed: number): any;
 };
 
 export interface Turns {
     from: string;
     moves: Move[];
+}
+
+export interface Playback {
+    snapshot: Snapshot;
+    turns: Turns;
 }
 
 export interface Acceptance {

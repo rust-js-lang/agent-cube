@@ -1,27 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import ReferenceCube from "../reference/cubejs/index.js";
-import { call, cubePixels, initialUrl, read, solved, visibleState } from "./helpers";
+import { call, cubePixels, initialUrl, read, savedText, solved, visibleState } from "./helpers";
 
 async function ready(page: Page, url = initialUrl) {
   await page.goto(url);
   await expect(page.getByTestId("agent-status")).toHaveText("Ready · 4 tools");
-}
-
-async function savedText(page: Page) {
-  return page.evaluate(async () => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("agent-cube", 1);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    try {
-      return await new Promise<string | undefined>((resolve, reject) => {
-        const request = db.transaction("practice").objectStore("practice").get("active");
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    } finally { db.close(); }
-  });
 }
 
 async function replaceSavedText(page: Page, text: string) {

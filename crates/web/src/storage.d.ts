@@ -14,6 +14,7 @@ export type Storage = {
 export const Storage: {
     durable(storage: Storage): boolean;
     read(storage: Storage): any;
+    playback(storage: Storage): any;
     submit(storage: Storage, command: Command, signal?: AbortSignal | null | undefined): any;
 };
 
