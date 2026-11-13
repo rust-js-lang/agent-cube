@@ -19,6 +19,8 @@ async function play(page: Page, moves: string, revision: number, time: number) {
   return JSON.parse(result.content[0].text);
 }
 async function finishReplay(page: Page, time: number) {
+  await expect(page.locator("canvas")).toHaveAttribute("data-playback", "replay");
+  await expect(page.locator("canvas")).toHaveAttribute("data-motion", "turning");
   await frame(page, time);
   await frame(page, time + 60_001);
   await expect(page.getByRole("button", { name: /^Replay \d+ moves?$/ })).toBeEnabled();

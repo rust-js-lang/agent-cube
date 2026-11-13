@@ -3,8 +3,9 @@ use std::f64::consts::PI;
 use std::rc::Rc;
 
 use cube_core::{Cube, FACES, Move, NORMALS, facelet_position};
+use react::event::{KeyboardEvent, PointerEvent};
 use react::{CSSProperties, JSX, jsx, use_effect, use_ref, use_state};
-use webapi::{Event, EventTargetExt, HTMLCanvasElement, document, events, window};
+use webapi::{Event, EventTargetExt, HTMLCanvasElement, HTMLDivElement, document, events, window};
 
 use crate::colors::color;
 use crate::presentation::Presentation;
@@ -14,10 +15,65 @@ use crate::three::{
 
 pub struct PreviewProps {
     pub view: &'static str,
+    pub camera_reset: u32,
+    pub snap: bool,
     pub step: Presentation,
     pub complete: Rc<dyn Fn(u32)>,
     pub detach: Rc<dyn Fn()>,
     pub pace: Rc<Cell<f64>>,
+}
+
+/// Camera orientation is presentation only: it never changes cube notation.
+#[derive(Clone, Copy, PartialEq)]
+struct Orbit {
+    yaw: f64,
+    pitch: f64,
+    distance: f64,
+}
+impl Orbit {
+    fn preset(view: &str) -> Self {
+        if view == "front" {
+            Self {
+                yaw: 0.0,
+                pitch: 0.0,
+                distance: 9.5,
+            }
+        } else {
+            Self {
+                yaw: 6.2_f64.atan2(7.0),
+                pitch: 5.0_f64.atan2(6.2_f64.hypot(7.0)),
+                distance: 6.2_f64.hypot(7.0).hypot(5.0),
+            }
+        }
+    }
+    fn shifted(self, x: f64, y: f64) -> Self {
+        Self {
+            yaw: (self.yaw - x).rem_euclid(2.0 * PI),
+            pitch: (self.pitch + y).clamp(-PI / 2.0, PI / 2.0),
+            ..self
+        }
+    }
+    fn snapped(self) -> Self {
+        let step = PI / 4.0;
+        Self {
+            yaw: (self.yaw / step).round() * step,
+            pitch: (self.pitch / step).round() * step,
+            ..self
+        }
+    }
+}
+#[derive(Clone, Copy)]
+struct Drag {
+    pointer: i32,
+    x: f64,
+    y: f64,
+    origin: Orbit,
+}
+impl Drag {
+    fn moved(self, x: f64, y: f64) -> Orbit {
+        self.origin
+            .shifted((x - self.x) * 0.008, (y - self.y) * 0.008)
+    }
 }
 
 struct Cubie {
@@ -84,12 +140,14 @@ impl Drawing {
         self.draw();
     }
 
-    fn camera_view(&self, view: &str) {
-        if view == "front" {
-            self.camera.position().set(0.0, 0.0, 9.5);
-        } else {
-            self.camera.position().set(6.2, 5.0, 7.0);
-        }
+    fn camera_view(&self, orbit: Orbit) {
+        // Avoid a parallel up/look direction at either pole.
+        let pitch = orbit.pitch.clamp(-PI / 2.0 + 0.0001, PI / 2.0 - 0.0001);
+        self.camera.position().set(
+            orbit.distance * pitch.cos() * orbit.yaw.sin(),
+            orbit.distance * pitch.sin(),
+            orbit.distance * pitch.cos() * orbit.yaw.cos(),
+        );
         self.camera.look_at(0.0, 0.0, 0.0);
         self.draw();
     }
@@ -276,12 +334,16 @@ impl Drawing {
 pub fn Preview(
     PreviewProps {
         view,
+        camera_reset,
+        snap,
         step,
         complete,
         detach,
         pace,
     }: PreviewProps,
 ) -> JSX::Element {
+    let (orbit, set_orbit) = use_state(|| Orbit::preset(view));
+    let drag = use_ref(None::<Drag>);
     let canvas = use_ref(None::<&'static HTMLCanvasElement>);
     let drawing = use_ref(None::<Rc<Drawing>>);
     let (problem, set_problem) = use_state(|| None::<&'static str>);
@@ -376,7 +438,7 @@ pub fn Preview(
                         completed_turns: Cell::new(0),
                         pace: Rc::clone(&pacing),
                     });
-                    objects.camera_view("perspective");
+                    objects.camera_view(Orbit::preset("perspective"));
                     objects.resize();
                     drawing.set_current(Some(Rc::clone(&objects)));
                     let resized = Rc::clone(&objects);
@@ -433,11 +495,26 @@ pub fn Preview(
 
     use_effect(
         move || {
-            if let Some(drawing) = drawing.current() {
-                drawing.camera_view(view);
+            drag.set_current(None);
+            set_orbit.set(Orbit::preset(view));
+        },
+        Some(&(view, camera_reset)),
+    );
+    use_effect(
+        move || {
+            if snap {
+                set_orbit.update(|orbit| orbit.snapped());
             }
         },
-        Some(&(view,)),
+        Some(&(snap,)),
+    );
+    use_effect(
+        move || {
+            if let Some(drawing) = drawing.current() {
+                drawing.camera_view(*orbit);
+            }
+        },
+        Some(&(*orbit,)),
     );
     let animated = step.clone();
     use_effect(
@@ -465,13 +542,74 @@ pub fn Preview(
         Some(&(step.id, *problem)),
     );
 
+    let start_drag = move |event: &PointerEvent<HTMLDivElement>| {
+        if event.is_primary() && event.button() == 0 {
+            event.prevent_default();
+            event
+                .current_target()
+                .set_pointer_capture(event.pointer_id());
+            drag.set_current(Some(Drag {
+                pointer: event.pointer_id(),
+                x: event.client_x(),
+                y: event.client_y(),
+                origin: *orbit,
+            }));
+        }
+    };
+    let move_drag = move |event: &PointerEvent<HTMLDivElement>| {
+        if let Some(active) = drag
+            .current()
+            .filter(|active| active.pointer == event.pointer_id())
+        {
+            set_orbit.set(active.moved(event.client_x(), event.client_y()));
+        }
+    };
+    let end_drag = move |event: &PointerEvent<HTMLDivElement>| {
+        if let Some(active) = drag
+            .current()
+            .filter(|active| active.pointer == event.pointer_id())
+        {
+            drag.set_current(None);
+            let next = active.moved(event.client_x(), event.client_y());
+            set_orbit.set(if snap { next.snapped() } else { next });
+            if event
+                .current_target()
+                .has_pointer_capture(event.pointer_id())
+            {
+                event
+                    .current_target()
+                    .release_pointer_capture(event.pointer_id());
+            }
+        }
+    };
+    let cancel_drag = move || {
+        drag.set_current(None);
+        if snap {
+            set_orbit.update(|orbit| orbit.snapped());
+        }
+    };
+    let rotate_key = move |event: &KeyboardEvent<HTMLDivElement>| {
+        let delta = if snap { PI / 4.0 } else { PI / 18.0 };
+        let next = match event.key().as_str() {
+            "ArrowLeft" => Some(orbit.shifted(-delta, 0.0)),
+            "ArrowRight" => Some(orbit.shifted(delta, 0.0)),
+            "ArrowUp" => Some(orbit.shifted(0.0, -delta)),
+            "ArrowDown" => Some(orbit.shifted(0.0, delta)),
+            "Home" => Some(Orbit::preset(view)),
+            _ => None,
+        };
+        if let Some(next) = next {
+            event.prevent_default();
+            set_orbit.set(if snap { next.snapped() } else { next });
+        }
+    };
     let values: Vec<char> = step.snapshot.facelets.chars().collect();
     jsx! {
-        <div className="cube-preview" data-view={view} data-renderer={if problem.is_some() { "compatible" } else { "webgl" }}>
+        <div className="cube-preview" role="group" aria-label="Rotate cube view" tabIndex={0} onPointerDown={start_drag} onPointerMove={move_drag} onPointerUp={end_drag} onPointerCancel={move |_| cancel_drag()} onLostPointerCapture={move |_| cancel_drag()} onKeyDown={rotate_key} data-yaw={orbit.yaw.to_string()} data-pitch={orbit.pitch.to_string()} data-drag-mode={if snap { "snap" } else { "free" }} data-view={view} data-renderer={if problem.is_some() { "compatible" } else { "webgl" }}>
             <canvas ref={canvas} style={CSSProperties::new().set("display", if problem.is_some() { "none" } else { "block" })} aria-label="Interactive cube rendering" role="img" />
             {problem.is_some().then(|| jsx! {
                 <div className="compatible-stage" role="img" aria-label="Cube with compatible rendering">
-                    <div className="compatible-cube">
+                    <div className="compatible-cube" style={CSSProperties::new().set("transform", format!("rotateX({}rad) rotateY({}rad)", -orbit.pitch, -orbit.yaw))}>
                         {FACES.into_iter().enumerate().map(|(face, name)| {
                             let stickers = values[face * 9..face * 9 + 9].to_vec();
                             jsx! { <div className={format!("compatible-face face-{name}")} key={name.to_string()}>

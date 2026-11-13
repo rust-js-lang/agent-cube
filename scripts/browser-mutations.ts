@@ -3,6 +3,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 const root = resolve(import.meta.dir, "..");
 const cases = [
+  { file: "preview.rs", find: "orbit.distance * pitch.cos() * orbit.yaw.sin(),\n            orbit.distance * pitch.sin(),\n            orbit.distance * pitch.cos() * orbit.yaw.cos(),", replacement: "0.0, 0.0, orbit.distance,", test: "free dragging.*fallback=false", assertion: /Dragging must change actual cube pixels/ },
+  { file: "preview.rs", find: "let step = PI / 4.0;", replacement: "let step = PI / 2.0;", test: "Snap drags freely", assertion: /toBeCloseTo/ },
   { file: "preview.rs", find: "delta * self.pace.get()", replacement: "delta", test: "rapid human clicks", assertion: /A fast click burst must rotate faster/ },
   { file: "App.rs", find: "snapshot.solved && snapshot.move_count > 0", replacement: "snapshot.move_count > 0", test: "Replay appears only", assertion: /Expected: 0/ },
   { file: "preview.rs", find: "Some(&()),", replacement: "Some(&(view,)),", test: "without recreating WebGL", assertion: /toBe\(calls\)|The cube must contain real colored sticker pixels/ },

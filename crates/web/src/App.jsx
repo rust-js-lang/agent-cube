@@ -100,6 +100,8 @@ export function App() {
     const option$1 = option != null && option === "front" ? option : undefined;
     return option$1 != null ? "front" : "perspective";
   });
+  const [cameraReset, setCameraReset] = useState(0);
+  const [snapView, setSnapView] = useState(false);
   const [problem, setProblem] = useState(undefined);
   const [replaying, setReplaying] = useState(false);
   const [sharing, setSharing] = useState("Copy challenge link");
@@ -116,7 +118,10 @@ export function App() {
     } catch (error) {
       $catchable(error);
     }
-    flushSync(() => setView(next));
+    flushSync(() => {
+      setView(next);
+      setCameraReset((value) => (value + 1) >>> 0);
+    });
   }
 
   useEffect(() => {
@@ -451,9 +456,24 @@ export function App() {
               <span className="eyebrow">01 / YOUR NEXT CHALLENGE</span>
               <span className="preview-label">3 × 3 · LIVE</span>
             </div>
-            <Preview view={view} step={step} complete={complete} detach={detach} pace={pace} />
+            <Preview
+              view={view}
+              step={step}
+              complete={complete}
+              detach={detach}
+              pace={pace}
+              cameraReset={cameraReset}
+              snap={snapView}
+            />
             <div className="stage-bottom">
-              <span>LOOK AROUND</span>
+              <div className="view-controls" role="group" aria-label="Drag mode">
+                <button type="button" aria-pressed={!snapView} onClick={() => setSnapView(false)}>
+                  Free
+                </button>
+                <button type="button" aria-pressed={snapView} onClick={() => setSnapView(true)}>
+                  Snap
+                </button>
+              </div>
               <div className="view-controls" role="group" aria-label="Camera view">
                 <button
                   type="button"

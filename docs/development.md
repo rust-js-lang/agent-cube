@@ -54,7 +54,7 @@ artifact on port 4173, use available CPU cores, and launch the pinned Chromium
 with --enable-features=WebMCP enabled. They use Playwright's page.webmcp.tools() and page.webmcp.callTool(), backed by the real document.modelContext API,
 not a substitute registry. Test failure must not silently skip unsupported APIs.
 
-See [TESTS.md](../TESTS.md) for the 42 browser tests, fifteen native and generated-JavaScript tests, 64 parity probes, and twelve mutation checks.
+See [TESTS.md](../TESTS.md) for the 50 browser tests, sixteen native and generated-JavaScript tests, 64 parity probes, and sixteen mutation checks.
 
 ## Current scope
 
@@ -76,7 +76,7 @@ after transaction completion. Mutating tools require commandId and
 expectedRevision. Retry the exact request with the same ID after a lost response;
 a receipt can refer to an earlier revision, so read again before a new command.
 
-Replay N moves reconstructs the current challenge from the latest shuffle or
+After solving, Replay N moves reconstructs the current challenge from the latest shuffle or
 shared-position load and all accepted played moves. It changes presentation only;
 new live commands interrupt it. Replay runs at normal turn speed, capped to a
 60-second timeline for long histories, and stays available after a saved reload.

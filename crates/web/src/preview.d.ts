@@ -5,6 +5,8 @@ import type { Presentation } from "./presentation.js";
 
 export interface PreviewProps {
     view: string;
+    cameraReset: number;
+    snap: boolean;
     step: Presentation;
     complete: (value: number) => void;
     detach: () => void;

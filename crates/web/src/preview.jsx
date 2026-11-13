@@ -17,16 +17,59 @@ import {
 } from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import {
+  $clampFloat,
   $copyOf,
+  $debugF64,
   $displayF64,
   $eq,
   $f64Max,
   $f64Min,
+  $floatEuclid,
   $index,
   $iter,
   $lazyZip,
+  $round,
   $unwrap,
 } from "@rust-js/std";
+
+const Orbit = {
+  preset(view) {
+    return view === "front"
+      ? {
+          yaw: 0,
+          pitch: 0,
+          distance: 9.5,
+        }
+      : {
+          yaw: Math.atan2(6.2, 7),
+          pitch: Math.atan2(5, Math.hypot(6.2, 7)),
+          distance: Math.hypot(Math.hypot(6.2, 7), 5),
+        };
+  },
+  shifted(orbit, x, y) {
+    const remEuclid = $floatEuclid(orbit.yaw - x, 2 * Math.PI, true);
+    return {
+      ...orbit,
+      yaw: remEuclid,
+      pitch: $clampFloat(orbit.pitch + y, -Math.PI / 2, Math.PI / 2, $debugF64),
+    };
+  },
+  snapped(orbit) {
+    const step = Math.PI / 4;
+    const value = $round(orbit.yaw / step) * step;
+    return {
+      ...orbit,
+      yaw: value,
+      pitch: $round(orbit.pitch / step) * step,
+    };
+  },
+};
+
+const Drag = {
+  moved(drag, x, y) {
+    return Orbit.shifted(drag.origin, (x - drag.x) * 0.008, (y - drag.y) * 0.008);
+  },
+};
 
 function reducedMotion() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -50,12 +93,14 @@ const Drawing = {
     Drawing.draw(drawing);
   },
 
-  cameraView(drawing, view) {
-    if (view === "front") {
-      drawing.camera.position.set(0, 0, 9.5);
-    } else {
-      drawing.camera.position.set(6.2, 5, 7);
-    }
+  cameraView(drawing, orbit) {
+    // Avoid a parallel up/look direction at either pole.
+    const pitch = $clampFloat(orbit.pitch, -Math.PI / 2 + 0.0001, Math.PI / 2 - 0.0001, $debugF64);
+    drawing.camera.position.set(
+      orbit.distance * Math.cos(pitch) * Math.sin(orbit.yaw),
+      orbit.distance * Math.sin(pitch),
+      orbit.distance * Math.cos(pitch) * Math.cos(orbit.yaw),
+    );
     drawing.camera.lookAt(0, 0, 0);
     Drawing.draw(drawing);
   },
@@ -235,7 +280,9 @@ const Drawing = {
   },
 };
 
-export function Preview({ view, step, complete, detach, pace }) {
+export function Preview({ view, cameraReset, snap, step, complete, detach, pace }) {
+  const [orbit, setOrbit] = useState(() => Orbit.preset(view));
+  const drag = useRef(undefined);
   const canvas = useRef(undefined);
   const drawing = useRef(undefined);
   const [problem, setProblem] = useState(undefined);
@@ -346,7 +393,7 @@ export function Preview({ view, step, complete, detach, pace }) {
       completedTurns: 0,
       pace,
     };
-    Drawing.cameraView(objects, "perspective");
+    Drawing.cameraView(objects, Orbit.preset("perspective"));
     Drawing.resize(objects);
     drawing.current = objects;
     const resize = () => Drawing.resize(objects);
@@ -389,11 +436,20 @@ export function Preview({ view, step, complete, detach, pace }) {
   }, []);
 
   useEffect(() => {
+    drag.current = undefined;
+    setOrbit(Orbit.preset(view));
+  }, [view, cameraReset]);
+  useEffect(() => {
+    if (snap) {
+      setOrbit((orbit) => Orbit.snapped(orbit));
+    }
+  }, [snap]);
+  useEffect(() => {
     const drawing$1 = drawing.current;
     if (drawing$1 != null) {
-      Drawing.cameraView(drawing$1, view);
+      Drawing.cameraView(drawing$1, orbit);
     }
-  }, [view]);
+  }, [orbit]);
   const animated = {
     ...step,
     snapshot: { ...step.snapshot },
@@ -433,39 +489,118 @@ export function Preview({ view, step, complete, detach, pace }) {
     }
   }, [step.id, problem]);
 
+  function startDrag(event) {
+    if (event.isPrimary && event.button === 0) {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      drag.current = {
+        pointer: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        origin: orbit,
+      };
+    }
+  }
+  function moveDrag(event) {
+    const active = drag.current;
+    if (active != null && active.pointer === event.pointerId) {
+      setOrbit(Drag.moved(active, event.clientX, event.clientY));
+    }
+  }
+  function endDrag(event) {
+    const active = drag.current;
+    if (active != null && active.pointer === event.pointerId) {
+      drag.current = undefined;
+      const next = Drag.moved(active, event.clientX, event.clientY);
+      setOrbit(snap ? Orbit.snapped(next) : next);
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    }
+  }
+  function cancelDrag() {
+    drag.current = undefined;
+    if (snap) {
+      setOrbit((orbit) => Orbit.snapped(orbit));
+    }
+  }
+  function rotateKey(event) {
+    const delta = snap ? Math.PI / 4 : Math.PI / 18;
+    let next;
+    switch (event.key) {
+      case "ArrowLeft":
+        next = Orbit.shifted(orbit, -delta, 0);
+        break;
+      case "ArrowRight":
+        next = Orbit.shifted(orbit, delta, 0);
+        break;
+      case "ArrowUp":
+        next = Orbit.shifted(orbit, 0, -delta);
+        break;
+      case "ArrowDown":
+        next = Orbit.shifted(orbit, 0, delta);
+        break;
+      case "Home":
+        next = Orbit.preset(view);
+        break;
+      default:
+        next = undefined;
+        break;
+    }
+    if (next !== undefined) {
+      event.preventDefault();
+      setOrbit(snap ? Orbit.snapped(next) : next);
+    }
+  }
   const values = Array.from(step.snapshot.facelets);
+  const style = { display: problem != null ? "none" : "block" };
+  let style$1;
+  let items;
+  if (problem != null) {
+    style$1 = {
+      transform: `rotateX(${$displayF64(-orbit.pitch)}rad) rotateY(${$displayF64(-orbit.yaw)}rad)`,
+    };
+    items = FACES.slice().map((name, face) => {
+      const stickers = $copyOf(values, (face * 9) >>> 0, (((face * 9) >>> 0) + 9) >>> 0);
+      return (
+        <div className={`compatible-face face-${name}`} key={name}>
+          {stickers.map((value) => {
+            const [hex, label] = color(value);
+            return (
+              <span
+                data-color={value}
+                title={label}
+                style={{ backgroundColor: `#${hex.toString(16).padStart(6, "0")}` }}
+              />
+            );
+          })}
+        </div>
+      );
+    });
+  }
   return (
     <div
       className="cube-preview"
+      role="group"
+      aria-label="Rotate cube view"
+      tabIndex={0}
+      onPointerDown={startDrag}
+      onPointerMove={moveDrag}
+      onPointerUp={endDrag}
+      onPointerCancel={cancelDrag}
+      onLostPointerCapture={cancelDrag}
+      onKeyDown={rotateKey}
+      data-yaw={$displayF64(orbit.yaw)}
+      data-pitch={$displayF64(orbit.pitch)}
+      data-drag-mode={snap ? "snap" : "free"}
       data-view={view}
       data-renderer={problem != null ? "compatible" : "webgl"}
     >
-      <canvas
-        ref={canvas}
-        style={{ display: problem != null ? "none" : "block" }}
-        aria-label="Interactive cube rendering"
-        role="img"
-      />
+      <canvas ref={canvas} style={style} aria-label="Interactive cube rendering" role="img" />
       {problem != null && (
         <div className="compatible-stage" role="img" aria-label="Cube with compatible rendering">
-          <div className="compatible-cube">
-            {FACES.slice().map((name, face) => {
-              const stickers = $copyOf(values, (face * 9) >>> 0, (((face * 9) >>> 0) + 9) >>> 0);
-              return (
-                <div className={`compatible-face face-${name}`} key={name}>
-                  {stickers.map((value) => {
-                    const [hex, label] = color(value);
-                    return (
-                      <span
-                        data-color={value}
-                        title={label}
-                        style={{ backgroundColor: `#${hex.toString(16).padStart(6, "0")}` }}
-                      />
-                    );
-                  })}
-                </div>
-              );
-            })}
+          <div className="compatible-cube" style={style$1}>
+            {items}
           </div>
         </div>
       )}

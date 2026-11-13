@@ -10,7 +10,10 @@ with saved local play and shareable cube links. Tailscale multiplayer is planned
 Local play is implemented: a shared Rust cube engine, all 18 face turns,
 shuffling, a six-face view, animated Three.js cubies with a working no-WebGL view,
 and native WebMCP tools. Rounded cubies and glossy plastic give each face turn
-visible depth. Human and agent moves share ordered, eased layer animations;
+visible depth. Drag the cube in **Free** mode to orbit it, or choose **Snap**
+to settle onto the nearest 45° view when you release. Arrow keys rotate a focused
+view; Home and the Front/Perspective presets reset it. Camera movement never
+changes the puzzle or move count. Human and agent moves share ordered, eased layer animations;
 shuffles animate their scramble, and rapid clicks speed up queued turns without losing moves.
 Reduced motion presents the final position immediately. Agents inspect the cube
 and submit legal solution moves. After solving, **Replay N moves** watches the

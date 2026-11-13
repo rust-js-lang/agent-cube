@@ -98,6 +98,8 @@ pub fn App() -> JSX::Element {
         .filter(|view| view == "front")
         .map_or("perspective", |_| "front")
     });
+    let (camera_reset, set_camera_reset) = use_state(|| 0_u32);
+    let (snap_view, set_snap_view) = use_state(|| false);
     let (problem, set_problem) = use_state(|| None::<String>);
     let (replaying, set_replaying) = use_state(|| false);
     let (sharing, set_sharing) = use_state(|| "Copy challenge link");
@@ -111,7 +113,10 @@ pub fn App() -> JSX::Element {
                 let _ = storage.set_item("agent-cube.camera", next);
             }
         });
-        flush_sync(move || set_view.set(next));
+        flush_sync(move || {
+            set_view.set(next);
+            set_camera_reset.update(|value| value.wrapping_add(1));
+        });
     };
 
     let initializing = Rc::clone(&session);
@@ -411,8 +416,8 @@ pub fn App() -> JSX::Element {
                 <section className="lab" aria-label="Cube playground">
                     <div className="stage">
                         <div className="stage-top"><span className="eyebrow">{"01 / YOUR NEXT CHALLENGE"}</span><span className="preview-label">{"3 × 3 · LIVE"}</span></div>
-                        <Preview view={*view} step={presentation.clone()} complete={complete} detach={detach} pace={pace} />
-                        <div className="stage-bottom"><span>{"LOOK AROUND"}</span><div className="view-controls" role="group" aria-label="Camera view">
+                        <Preview view={*view} step={presentation.clone()} complete={complete} detach={detach} pace={pace} cameraReset={*camera_reset} snap={*snap_view} />
+                        <div className="stage-bottom"><div className="view-controls" role="group" aria-label="Drag mode"><button type="button" aria-pressed={!*snap_view} onClick={move |_| set_snap_view.set(false)}>{"Free"}</button><button type="button" aria-pressed={*snap_view} onClick={move |_| set_snap_view.set(true)}>{"Snap"}</button></div><div className="view-controls" role="group" aria-label="Camera view">
                             <button type="button" aria-pressed={*view == "perspective"} onClick={move |_| change_view("perspective")}>{"Perspective"}</button>
                             <button type="button" aria-pressed={*view == "front"} onClick={move |_| change_view("front")}>{"Front"}</button>
                         </div></div>

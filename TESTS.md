@@ -7,9 +7,9 @@ Updated 2026-11-13. Run checks locally; the Pages workflow only builds and deplo
 | Native Rust cube tests | 16 tests | All 18 moves and three algorithms match independent fixtures; move inverses, order four, sticker conservation, parsing, revisions, and atomic batches |
 | The same tests compiled through rust-js | 16 tests | The Rust tests also pass as JavaScript with Bun |
 | Cross-target/reference parity | 64 seeded 100-move sequences | Native Rust, generated JavaScript, and an independent cube model produce identical algorithms and all 54 facelets |
-| Playwright against the production bundle | 45 tests | Visible sticker pixels, stable renderer lifetime, camera/move updates, all moves, WebMCP shuffle/solve, invalid/stale/concurrent commands, missing WebMCP, denied storage, failed WebGL, and actual context loss |
+| Playwright against the production bundle | 50 tests | Visible sticker pixels, stable renderer lifetime, camera/move updates, all moves, WebMCP shuffle/solve, invalid/stale/concurrent commands, missing WebMCP, denied storage, failed WebGL, and actual context loss |
 | Native mutations | 8 | Reversed turns, stale revisions, truncated batches, impossible permutation/twist/flip, and missing retry recognition must fail tests |
-| Browser mutations | 6 | Renderer recreation, aborted-transaction acknowledgement, stationary geometry, replay identity, missing acceleration, and unsolved Replay visibility must fail the corresponding production-browser assertions |
+| Browser mutations | 8 | Renderer recreation, aborted-transaction acknowledgement, stationary geometry, replay identity, missing acceleration, and unsolved Replay visibility must fail the corresponding production-browser assertions |
 
 ```sh
 bun run build
@@ -98,3 +98,9 @@ that every click commits in order, accelerates the visible layer, and finishes
 at the independent reference position. Replay stays hidden until solved.
 Browser mutations remove acceleration and solved-only visibility to prove
 these assertions detect regressions.
+
+Camera tests require changed rendered pixels on both Three.js and CSS views,
+nearest-angle snapping after release, mouse and real Chromium touch input,
+cancellation and release outside the view, keyboard control, repeated presets,
+and orbiting during a face turn. Saved bytes, URL, revision and move count remain
+unchanged. Camera-position and snap-step mutations must fail these assertions.
