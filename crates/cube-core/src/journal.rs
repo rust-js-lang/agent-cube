@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Move, Session, Snapshot, parse_moves};
+use crate::{Move, SOLVED, Session, Snapshot, parse_moves, scramble};
 
 pub const MAX_COMMANDS: usize = 4096;
 
@@ -38,6 +38,7 @@ pub struct Journal {
 
 #[derive(Clone)]
 pub struct Turns {
+    pub reset: bool,
     pub from: String,
     pub moves: Vec<Move>,
 }
@@ -135,7 +136,11 @@ impl Journal {
         }
         Ok(Playback {
             snapshot: session.snapshot(),
-            turns: Turns { from, moves },
+            turns: Turns {
+                reset: true,
+                from,
+                moves,
+            },
         })
     }
 
@@ -168,10 +173,16 @@ impl Journal {
             let from = session.snapshot().facelets;
             let entry = Entry { command, seed };
             let receipt = apply(&mut session, &entry)?;
-            let turns = match &entry.command.action {
-                Action::Moves(text) => Some(Turns {
+            let turns = match (&entry.command.action, entry.seed) {
+                (Action::Moves(text), None) => Some(Turns {
+                    reset: false,
                     from,
                     moves: parse_moves(text)?,
+                }),
+                (Action::Shuffle(length), Some(seed)) => Some(Turns {
+                    reset: true,
+                    from: SOLVED.into(),
+                    moves: scramble(seed, *length)?,
                 }),
                 _ => None,
             };
@@ -196,6 +207,32 @@ mod tests {
             expected_revision: revision,
             action: Action::Moves(moves.into()),
         }
+    }
+
+    #[test]
+    fn shuffle_animation_starts_solved_and_reconstructs_the_new_challenge() {
+        let mut log = Journal::default();
+        log.accept(moves("old", 0, "R U"), 0).unwrap();
+        let accepted = log
+            .accept(
+                Command {
+                    command_id: "shuffle".into(),
+                    expected_revision: 1,
+                    action: Action::Shuffle(20),
+                },
+                42,
+            )
+            .unwrap();
+        let turns = accepted.turns.unwrap();
+        assert!(turns.reset);
+        assert_eq!(turns.from, SOLVED);
+        assert_eq!(turns.moves.len(), 20);
+        let mut cube = crate::Cube::from_facelets(&turns.from).unwrap();
+        for movement in turns.moves {
+            cube.apply(movement);
+        }
+        assert_eq!(cube.facelets(), accepted.current.facelets);
+        assert_eq!(accepted.current.move_count, 0);
     }
 
     #[test]

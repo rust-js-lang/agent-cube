@@ -30,7 +30,7 @@ test.beforeEach(async ({ page }) => { await controlFrames(page); });
 
 test("replay is unavailable until the current challenge has played moves", async ({ page }) => {
   await ready(page);
-  await expect(page.getByRole("button", { name: "Replay moves", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Replay moves", exact: true })).toHaveCount(0);
 });
 
 test("a 22-move solution replays from its challenge start, repeats, and survives reload without changing game data", async ({ page }) => {
@@ -83,7 +83,7 @@ test("replay joins separate command batches and retries appear only once", async
   await frame(page, 0); await frame(page, 2500);
   expect((await pending).isError).toBe(false);
   expect((await page.webmcp.callTool("apply_moves", first)).isError).toBe(false);
-  const snapshot = await play(page, "F' D2", 1, 3000);
+  const snapshot = await play(page, "U' R'", 1, 3000);
   await page.getByRole("button", { name: "Replay 4 moves", exact: true }).click();
   await expect(page.locator("canvas")).toHaveAttribute("data-presented-facelets", solved);
   await finishReplay(page, 6000);
@@ -93,7 +93,7 @@ test("replay joins separate command batches and retries appear only once", async
 
 test("new committed moves cancel replay and animate from live state", async ({ page }) => {
   await ready(page);
-  const before = await play(page, "R U", 0, 0);
+  const before = await play(page, "R R'", 0, 0);
   await page.getByRole("button", { name: "Replay 2 moves", exact: true }).click();
   await expect(page.locator("canvas")).toHaveAttribute("data-playback", "replay");
   await frame(page, 3000); await frame(page, 3080);
@@ -105,30 +105,33 @@ test("new committed moves cancel replay and animate from live state", async ({ p
   expect((await pending).isError).toBe(false);
   const current = await read(page);
   expect(current.moveCount).toBe(3);
-  expect(current.facelets).toBe(new ReferenceCube().move("R U F").asString());
-  await expect(page.getByRole("button", { name: "Replay 3 moves", exact: true })).toBeEnabled();
+  expect(current.facelets).toBe(new ReferenceCube().move("F").asString());
+  await expect(page.locator(".replay-button")).toHaveCount(0);
 });
 
 test("a new shuffle or shared challenge resets replay history", async ({ page }) => {
   await ready(page);
-  await play(page, "R U", 0, 0);
+  await play(page, "R R'", 0, 0);
   await page.getByRole("button", { name: "Replay 2 moves", exact: true }).click();
   await expect(page.locator("canvas")).toHaveAttribute("data-playback", "replay");
-  expect((await page.webmcp.callTool("shuffle_cube", { commandId: "new-challenge", expectedRevision: 1, length: 20 })).isError).toBe(false);
-  await expect(page.getByRole("button", { name: "Replay moves", exact: true })).toBeDisabled();
+  const shuffled = page.webmcp.callTool("shuffle_cube", { commandId: "new-challenge", expectedRevision: 1, length: 20 });
+  await expect(page.locator("canvas")).toHaveAttribute("data-presented-facelets", solved);
+  await frame(page, 4000); await frame(page, 6500);
+  expect((await shuffled).isError).toBe(false);
+  await expect(page.locator(".replay-button")).toHaveCount(0);
   await play(page, "R", 2, 3000);
   await page.goto(initialUrl);
   await expect(page.locator(".cube-net")).toHaveAttribute("data-revision", "4");
-  await expect(page.getByRole("button", { name: "Replay moves", exact: true })).toBeDisabled();
-  await play(page, "B2", 4, 6000);
-  await page.getByRole("button", { name: "Replay 1 move", exact: true }).click();
+  await expect(page.locator(".replay-button")).toHaveCount(0);
+  await play(page, "B2 B2", 4, 6000);
+  await page.getByRole("button", { name: "Replay 2 moves", exact: true }).click();
   await expect(page.locator("canvas")).toHaveAttribute("data-presented-facelets", solved);
   await finishReplay(page, 9000);
 });
 
 test("reduced motion keeps replay read-only and never schedules frames", async ({ page }) => {
   await ready(page);
-  const snapshot = await play(page, "R U", 0, 0);
+  const snapshot = await play(page, "R R'", 0, 0);
   const saved = await savedText(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Replay 2 moves", exact: true }).click();
@@ -140,7 +143,7 @@ test("reduced motion keeps replay read-only and never schedules frames", async (
 
 test("graphics loss during replay restores the committed position and releases the replay button", async ({ page }) => {
   await ready(page);
-  const snapshot = await play(page, "R U", 0, 0);
+  const snapshot = await play(page, "R R'", 0, 0);
   const saved = await savedText(page);
   await page.getByRole("button", { name: "Replay 2 moves", exact: true }).click();
   await expect(page.locator("canvas")).toHaveAttribute("data-playback", "replay");
@@ -164,18 +167,22 @@ test("replay is available to human controls without WebMCP", async ({ page }) =>
   await page.getByRole("button", { name: "Turn R", exact: true }).click();
   await expect(page.locator("canvas")).toHaveAttribute("data-motion", "turning");
   await frame(page, 0); await frame(page, 500);
-  await page.getByRole("button", { name: "Replay 1 move", exact: true }).click();
+  await expect(page.locator(".replay-button")).toHaveCount(0);
+  await page.getByRole("button", { name: "Turn R'", exact: true }).click();
+  await expect(page.locator("canvas")).toHaveAttribute("data-motion", "turning");
+  await frame(page, 1000); await frame(page, 1500);
+  await page.getByRole("button", { name: "Replay 2 moves", exact: true }).click();
   await expect(page.locator("canvas")).toHaveAttribute("data-presented-facelets", solved);
-  await finishReplay(page, 1000);
-  await expect(page.locator(".cube-net")).toHaveAttribute("data-revision", "1");
-  await expect(page.getByTestId("cube-status")).toContainText("1 move");
+  await finishReplay(page, 2000);
+  await expect(page.locator(".cube-net")).toHaveAttribute("data-revision", "2");
+  await expect(page.getByTestId("cube-status")).toContainText("2 moves");
 });
 
 test("temporary sessions can replay until reload discards their history", async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(window, "indexedDB", { get() { throw new DOMException("blocked", "SecurityError"); } }));
   await ready(page);
   await expect(page.getByTestId("storage-status")).toHaveText("Temporary · history not saved");
-  const snapshot = await play(page, "R U", 0, 0);
+  const snapshot = await play(page, "R R'", 0, 0);
   await page.getByRole("button", { name: "Replay 2 moves", exact: true }).click();
   await expect(page.locator("canvas")).toHaveAttribute("data-presented-facelets", solved);
   await finishReplay(page, 3000);
@@ -184,5 +191,15 @@ test("temporary sessions can replay until reload discards their history", async 
   await expect(page.getByTestId("agent-status")).toHaveText("Ready · 4 tools");
   expect((await read(page)).facelets).toBe(snapshot.facelets);
   expect((await read(page)).moveCount).toBe(0);
-  await expect(page.getByRole("button", { name: "Replay moves", exact: true })).toBeDisabled();
+  await expect(page.locator(".replay-button")).toHaveCount(0);
+});
+
+
+test("Replay appears only for a solved challenge with recorded moves", async ({ page }) => {
+  await ready(page);
+  await expect(page.locator(".replay-button")).toHaveCount(0);
+  await play(page, "R", 0, 0);
+  await expect(page.locator(".replay-button")).toHaveCount(0);
+  await play(page, "R'", 1, 1000);
+  await expect(page.getByRole("button", { name: "Replay 2 moves", exact: true })).toBeEnabled();
 });

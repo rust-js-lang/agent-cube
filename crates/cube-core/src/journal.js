@@ -2,7 +2,7 @@
 
 /** Replayable local practice log. Storage commits a proposed log before publishing it. */
 
-import { SOLVED, Session, cubeDefault_default, parseMoves } from "./lib.js";
+import { SOLVED, Session, cubeDefault_default, parseMoves, scramble } from "./lib.js";
 import {
   $add,
   $byteLen,
@@ -226,7 +226,11 @@ export const Journal = {
       TAG: "Ok",
       _0: {
         snapshot: Session.snapshot(session),
-        turns: { from, moves },
+        turns: {
+          reset: true,
+          from,
+          moves,
+        },
       },
     };
   },
@@ -272,13 +276,25 @@ export const Journal = {
       }
       const receipt = result._0;
       let turns;
-      if (entry.command.action.TAG === "Moves") {
+      if (entry.command.action.TAG === "Moves" && entry.seed == null) {
         const result = parseMoves(entry.command.action._0);
         if (result.TAG === "Err") {
           return result;
         }
         turns = {
+          reset: false,
           from,
+          moves: result._0,
+        };
+      } else if (entry.command.action.TAG === "Shuffle" && entry.seed != null) {
+        const seed = entry.seed;
+        const result = scramble(seed, entry.command.action._0);
+        if (result.TAG === "Err") {
+          return result;
+        }
+        turns = {
+          reset: true,
+          from: SOLVED,
           moves: result._0,
         };
       } else {

@@ -1,5 +1,6 @@
 //! Browser session boundary shared by human controls and WebMCP.
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::panic::catch_unwind;
 use std::rc::Rc;
 
@@ -11,7 +12,14 @@ use webapi::{AbortSignal, BroadcastChannel, window};
 use crate::presentation::{Presentation, Presentations};
 use crate::storage::{self, Storage};
 
+struct HumanInput {
+    action: Action,
+    resolve: &'static dyn Fn(Result<Snapshot, String>),
+}
+
 pub struct LocalSession {
+    inputs: RefCell<VecDeque<HumanInput>>,
+    processing: Cell<bool>,
     state: RefCell<Snapshot>,
     pub presentations: Rc<Presentations>,
     storage: RefCell<Option<Storage>>,
@@ -27,6 +35,8 @@ impl LocalSession {
         presentation: &'static Dispatch<SetStateAction<Presentation>>,
     ) -> Self {
         Self {
+            inputs: RefCell::new(VecDeque::new()),
+            processing: Cell::new(false),
             state: RefCell::new(Session::default().snapshot()),
             presentations: Rc::new(Presentations::new(
                 Session::default().snapshot(),
@@ -42,9 +52,6 @@ impl LocalSession {
     pub fn ready(&self) -> bool {
         self.storage.borrow().is_some()
     }
-    pub fn snapshot(&self) -> Snapshot {
-        self.state.borrow().clone()
-    }
     pub fn set_channel(&self, channel: Option<&'static BroadcastChannel>) {
         *self.channel.borrow_mut() = channel;
     }
@@ -53,10 +60,11 @@ impl LocalSession {
         let linked = linked_position()?;
         let storage = storage::open().await?;
         let mut snapshot = storage.read().await?;
+        let mut turns = None;
         let action = entry_action(linked, &snapshot);
         let changed = action.is_some();
         if let Some(action) = action {
-            snapshot = storage
+            let accepted = storage
                 .submit(
                     Command {
                         command_id: window.crypto().random_uuid(),
@@ -65,8 +73,9 @@ impl LocalSession {
                     },
                     None,
                 )
-                .await?
-                .current;
+                .await?;
+            snapshot = accepted.current;
+            turns = accepted.turns;
         }
         self.status.set(if storage.durable() {
             "Saved on this browser"
@@ -74,7 +83,7 @@ impl LocalSession {
             "Temporary · history not saved"
         });
         *self.storage.borrow_mut() = Some(storage);
-        self.present(snapshot, None);
+        self.present(snapshot, turns);
         if changed {
             self.notify();
         }
@@ -108,6 +117,58 @@ impl LocalSession {
         command: Command,
         signal: Option<&'static AbortSignal>,
     ) -> Result<Snapshot, String> {
+        let (receipt, revision) = self.commit(command, signal).await?;
+        self.presentations.wait(revision).await;
+        Ok(receipt)
+    }
+
+    pub async fn play(self: &Rc<Self>, action: Action) -> Result<Snapshot, String> {
+        self.presentations.human_input(window.performance().now());
+        let waiting = js::promise::with_resolvers();
+        self.inputs.borrow_mut().push_back(HumanInput {
+            action,
+            resolve: waiting.resolve,
+        });
+        if !self.processing.replace(true) {
+            let session = Rc::clone(self);
+            js::spawn(Box::new(async move {
+                session.process_inputs().await;
+            }));
+        }
+        waiting.promise.await
+    }
+
+    async fn process_inputs(&self) {
+        loop {
+            let next = self.inputs.borrow_mut().pop_front();
+            let Some(input) = next else {
+                self.processing.set(false);
+                break;
+            };
+            let result = self.accept_input(input.action).await;
+            (input.resolve)(result);
+        }
+    }
+
+    async fn accept_input(&self, action: Action) -> Result<Snapshot, String> {
+        let snapshot = self.backend()?.read().await?;
+        self.commit(
+            Command {
+                command_id: window.crypto().random_uuid(),
+                expected_revision: snapshot.revision,
+                action,
+            },
+            None,
+        )
+        .await
+        .map(|(receipt, _)| receipt)
+    }
+
+    async fn commit(
+        &self,
+        command: Command,
+        signal: Option<&'static AbortSignal>,
+    ) -> Result<(Snapshot, u32), String> {
         let storage = self.backend()?;
         match storage.submit(command, signal).await {
             Ok(accepted) => {
@@ -116,8 +177,7 @@ impl LocalSession {
                 if accepted.accepted {
                     self.notify();
                 }
-                self.presentations.wait(revision).await;
-                Ok(accepted.receipt)
+                Ok((accepted.receipt, revision))
             }
             Err(error) => {
                 // Refresh stale plans, but never replace saved play with temporary play after a failure.

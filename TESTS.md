@@ -4,12 +4,12 @@ Updated 2026-11-13. Run checks locally; the Pages workflow only builds and deplo
 
 | Suite | Size | What it proves |
 |---|---|---|
-| Native Rust cube tests | 15 tests | All 18 moves and three algorithms match independent fixtures; move inverses, order four, sticker conservation, parsing, revisions, and atomic batches |
-| The same tests compiled through rust-js | 15 tests | The Rust tests also pass as JavaScript with Bun |
+| Native Rust cube tests | 16 tests | All 18 moves and three algorithms match independent fixtures; move inverses, order four, sticker conservation, parsing, revisions, and atomic batches |
+| The same tests compiled through rust-js | 16 tests | The Rust tests also pass as JavaScript with Bun |
 | Cross-target/reference parity | 64 seeded 100-move sequences | Native Rust, generated JavaScript, and an independent cube model produce identical algorithms and all 54 facelets |
-| Playwright against the production bundle | 42 tests | Visible sticker pixels, stable renderer lifetime, camera/move updates, all moves, WebMCP shuffle/solve, invalid/stale/concurrent commands, missing WebMCP, denied storage, failed WebGL, and actual context loss |
+| Playwright against the production bundle | 45 tests | Visible sticker pixels, stable renderer lifetime, camera/move updates, all moves, WebMCP shuffle/solve, invalid/stale/concurrent commands, missing WebMCP, denied storage, failed WebGL, and actual context loss |
 | Native mutations | 8 | Reversed turns, stale revisions, truncated batches, impossible permutation/twist/flip, and missing retry recognition must fail tests |
-| Browser mutations | 4 | Renderer recreation, acknowledging an aborted transaction, and leaving rotating geometry stationary must fail the corresponding production-browser assertions |
+| Browser mutations | 6 | Renderer recreation, aborted-transaction acknowledgement, stationary geometry, replay identity, missing acceleration, and unsolved Replay visibility must fail the corresponding production-browser assertions |
 
 ```sh
 bun run build
@@ -91,3 +91,10 @@ interrupt replay with new play or graphics loss, and cover reduced motion and
 human controls without WebMCP. Native/JS tests verify reset boundaries, complete
 move order, and corrupt-history rejection. New mutations select the wrong reset
 boundary or make replay depend on unchanged game revision; their tests fail.
+
+Shuffle tests start from a mixed position, require intermediate layer rotation,
+and reconstruct the accepted zero-move challenge. A twelve-click burst checks
+that every click commits in order, accelerates the visible layer, and finishes
+at the independent reference position. Replay stays hidden until solved.
+Browser mutations remove acceleration and solved-only visibility to prove
+these assertions detect regressions.

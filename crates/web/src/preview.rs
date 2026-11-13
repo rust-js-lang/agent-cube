@@ -17,6 +17,7 @@ pub struct PreviewProps {
     pub step: Presentation,
     pub complete: Rc<dyn Fn(u32)>,
     pub detach: Rc<dyn Fn()>,
+    pub pace: Rc<Cell<f64>>,
 }
 
 struct Cubie {
@@ -28,7 +29,8 @@ struct Motion {
     cube: Cube,
     moves: Vec<Move>,
     index: usize,
-    started: Option<f64>,
+    last_time: Option<f64>,
+    timeline: f64,
     elapsed: f64,
     unit_duration: f64,
     prepared: bool,
@@ -50,6 +52,7 @@ struct Drawing {
     frame: Cell<Option<f64>>,
     deadline: Cell<Option<&'static js::TimeoutId>>,
     completed_turns: Cell<u32>,
+    pace: Rc<Cell<f64>>,
 }
 
 fn reduced_motion() -> bool {
@@ -180,8 +183,12 @@ impl Drawing {
             self.finish_step(motion);
             return;
         }
-        let started = *motion.started.get_or_insert(time);
-        let elapsed = (time - started).max(0.0);
+        let delta = motion
+            .last_time
+            .replace(time)
+            .map_or(0.0, |previous| (time - previous).max(0.0));
+        motion.timeline += delta * self.pace.get();
+        let elapsed = motion.timeline;
         while let Some(movement) = motion.moves.get(motion.index).copied() {
             let duration = motion.unit_duration * weight(movement);
             if elapsed < motion.elapsed + duration {
@@ -237,7 +244,8 @@ impl Drawing {
                 cube,
                 moves: turns.moves,
                 index: 0,
-                started: None,
+                last_time: None,
+                timeline: 0.0,
                 elapsed: 0.0,
                 unit_duration: 240.0_f64.min(limit / units.max(1.0)),
                 prepared: false,
@@ -271,12 +279,14 @@ pub fn Preview(
         step,
         complete,
         detach,
+        pace,
     }: PreviewProps,
 ) -> JSX::Element {
     let canvas = use_ref(None::<&'static HTMLCanvasElement>);
     let drawing = use_ref(None::<Rc<Drawing>>);
     let (problem, set_problem) = use_state(|| None::<&'static str>);
     let detaching = Rc::clone(&detach);
+    let pacing = Rc::clone(&pace);
 
     // Renderer lifetime belongs to the canvas, not camera or cube updates.
     use_effect(
@@ -364,6 +374,7 @@ pub fn Preview(
                         frame: Cell::new(None),
                         deadline: Cell::new(None),
                         completed_turns: Cell::new(0),
+                        pace: Rc::clone(&pacing),
                     });
                     objects.camera_view("perspective");
                     objects.resize();

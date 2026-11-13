@@ -2,11 +2,11 @@
 
 Status: implemented. Extends ADR 0004's presentation queue.
 
-Replay N moves appears after the current challenge has accepted played moves.
+Replay N moves appears only when the current challenge is solved and has accepted played moves.
 It starts at that challenge's initial position and plays all accepted moves in
 order, including multiple command batches. Rejected requests and retries add
 nothing. A new shuffle or shared-position load resets the replay boundary.
-The button is disabled with no moves or while replay is being prepared/played.
+The button stays hidden while unsolved or with no played moves, and is disabled while replay is being prepared/played.
 
 The rule owner, Journal::playback, first validates/replays the durable record,
 then selects the last shuffle/load receipt as the origin (or solved for a record

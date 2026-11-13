@@ -373,7 +373,49 @@ export function App() {
   const ready = LocalSession.ready(session);
   const complete = (revision) => Presentations.finish(session.presentations, revision);
   const detach = () => Presentations.interrupt(session.presentations);
+  const pace = session.presentations.pace;
   const colors = Array.from(snapshot.facelets);
+  const step = {
+    ...presentation,
+    snapshot: { ...presentation.snapshot },
+    turns:
+      presentation.turns == null
+        ? presentation.turns
+        : { ...presentation.turns, moves: presentation.turns.moves.map((item) => ({ ...item })) },
+  };
+  const children = FACES.slice().map((face) => (
+    <div className="move-column" key={face}>
+      {["", "'", "2"].map((suffix) => {
+        const movement = face + suffix;
+        const command = movement;
+        return (
+          <button
+            type="button"
+            key={movement}
+            aria-label={`Turn ${movement}`}
+            disabled={!ready}
+            onClick={async () => {
+              const result = await LocalSession.play(session, { TAG: "Moves", _0: command });
+              setProblem(result.TAG === "Err" ? result._0 : undefined);
+            }}
+          >
+            {movement}
+          </button>
+        );
+      })}
+    </div>
+  ));
+  const value = snapshot.solved && snapshot.moveCount > 0;
+  let disabled;
+  let children$1;
+  if (value) {
+    disabled = !ready || snapshot.moveCount === 0 || replaying;
+    children$1 = replaying
+      ? "Replaying…"
+      : snapshot.moveCount === 0
+        ? "Replay moves"
+        : `Replay ${snapshot.moveCount} ${snapshot.moveCount === 1 ? "move" : "moves"}`;
+  }
 
   return (
     <div className="app-shell">
@@ -409,22 +451,7 @@ export function App() {
               <span className="eyebrow">01 / YOUR NEXT CHALLENGE</span>
               <span className="preview-label">3 × 3 · LIVE</span>
             </div>
-            <Preview
-              view={view}
-              step={{
-                ...presentation,
-                snapshot: { ...presentation.snapshot },
-                turns:
-                  presentation.turns == null
-                    ? presentation.turns
-                    : {
-                        ...presentation.turns,
-                        moves: presentation.turns.moves.map((item) => ({ ...item })),
-                      },
-              }}
-              complete={complete}
-              detach={detach}
-            />
+            <Preview view={view} step={step} complete={complete} detach={detach} pace={pace} />
             <div className="stage-bottom">
               <span>LOOK AROUND</span>
               <div className="view-controls" role="group" aria-label="Camera view">
@@ -457,67 +484,34 @@ export function App() {
               type="button"
               disabled={!ready}
               onClick={async () => {
-                const revision = LocalSession.snapshot(session).revision;
-                const result = await LocalSession.submit(session, {
-                  commandId: window.crypto.randomUUID(),
-                  expectedRevision: revision,
-                  action: { TAG: "Shuffle", _0: 20 },
-                });
+                const result = await LocalSession.play(session, { TAG: "Shuffle", _0: 20 });
                 setProblem(result.TAG === "Err" ? result._0 : undefined);
               }}
             >
               Shuffle cube ↗
             </button>
             <div className="move-controls" role="group" aria-label="Face turns">
-              {FACES.slice().map((face) => (
-                <div className="move-column" key={face}>
-                  {["", "'", "2"].map((suffix) => {
-                    const movement = face + suffix;
-                    const command = movement;
-                    return (
-                      <button
-                        type="button"
-                        key={movement}
-                        aria-label={`Turn ${movement}`}
-                        disabled={!ready}
-                        onClick={async () => {
-                          const revision = LocalSession.snapshot(session).revision;
-                          const result = await LocalSession.submit(session, {
-                            commandId: window.crypto.randomUUID(),
-                            expectedRevision: revision,
-                            action: { TAG: "Moves", _0: command },
-                          });
-                          setProblem(result.TAG === "Err" ? result._0 : undefined);
-                        }}
-                      >
-                        {movement}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
+              {children}
             </div>
             <p className="notation-note">Clockwise from outside · ' inverse · 2 half turn</p>
-            <button
-              className="replay-button"
-              type="button"
-              disabled={!ready || snapshot.moveCount === 0 || replaying}
-              title="Watch this challenge from its starting position"
-              onClick={() => {
-                setReplaying(true);
-                (async () => {
-                  const result = await LocalSession.replay(session);
-                  setProblem(result.TAG === "Err" ? result._0 : undefined);
-                  setReplaying(false);
-                })();
-              }}
-            >
-              {replaying
-                ? "Replaying…"
-                : snapshot.moveCount === 0
-                  ? "Replay moves"
-                  : `Replay ${snapshot.moveCount} ${snapshot.moveCount === 1 ? "move" : "moves"}`}
-            </button>
+            {value && (
+              <button
+                className="replay-button"
+                type="button"
+                disabled={disabled}
+                title="Watch this challenge from its starting position"
+                onClick={() => {
+                  setReplaying(true);
+                  (async () => {
+                    const result = await LocalSession.replay(session);
+                    setProblem(result.TAG === "Err" ? result._0 : undefined);
+                    setReplaying(false);
+                  })();
+                }}
+              >
+                {children$1}
+              </button>
+            )}
             {problem != null && <p role="alert">{problem}</p>}
             <dl className="status-list">
               <div>

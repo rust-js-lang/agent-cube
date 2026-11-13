@@ -11,12 +11,13 @@ changes. Dispose them and cancel frame/timer callbacks only on cleanup.
 The game referee still owns integer cube state. A fresh accepted move command
 provides a transient Turns event containing its before-position and parsed moves.
 Retries provide no event. The record format, receipts and WebMCP state observation
-remain unchanged. Shuffle/load/recovery snapshots snap directly rather than
-revealing a challenge's scramble sequence or inventing missed played turns.
+remain unchanged. A fresh local shuffle supplies its solved origin and full scramble
+as a transient reset event; it animates without counting scramble turns as played
+moves. Load/recovery snapshots still snap rather than inventing missed turns.
 
 Publish committed state to the net, URL and status immediately. Queue visual
 presentations in revision order. Animate only when the event starts at the
-previous queued endpoint; a gap or recovered snapshot snaps. Human controls and
+previous queued endpoint, or declares a shuffle reset; a gap or recovered snapshot snaps. Human controls and
 WebMCP both use this queue. A move call waits until its committed revision has
 been presented, while its durable acceptance remains independent of rendering.
 An old retry receipt can precede the current revision, without rewinding the UI
@@ -52,3 +53,9 @@ while keeping status metadata makes the halfway-pixel test fail.
 Rust/JS decision: accepted events, turn direction, ordering and endpoint state
 change observable results, so preserve Rust exactly. Rendering timing is browser
 presentation; frame scheduling cannot change game acceptance or solved status.
+
+Human clicks enter one FIFO acceptance queue. Each uses the latest durable revision
+when processed, so rapid clicks do not compete with each other using a stale
+revision. Agent requests retain explicit revision checks. Click intervals and
+queue backlog raise visual pace up to six times normal, integrating elapsed
+time so speed changes cannot reverse a turn. Replay keeps normal pace.

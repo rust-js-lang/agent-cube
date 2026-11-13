@@ -8,6 +8,9 @@ export interface PreviewProps {
     step: Presentation;
     complete: (value: number) => void;
     detach: () => void;
+    pace: {
+        value: number;
+    };
 }
 
 export function Preview(props: PreviewProps): JSX.Element;

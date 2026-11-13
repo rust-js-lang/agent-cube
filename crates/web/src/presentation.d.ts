@@ -21,6 +21,11 @@ export interface Presentations {
     target: Snapshot;
     completed: number;
     nextId: number;
+    pace: {
+        value: number;
+    };
+    requestedPace: number;
+    lastInput?: number | undefined;
     waiters: Waiter[];
     replayCompletion?: ((value: undefined) => void) | undefined;
     publish: any;
@@ -33,4 +38,5 @@ export const Presentations: {
     replay(presentations: Presentations, playback: Playback): any;
     interrupt(presentations: Presentations): void;
     wait(presentations: Presentations, revision: number): any;
+    humanInput(presentations: Presentations, now: number): void;
 };

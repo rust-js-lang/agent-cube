@@ -148,9 +148,11 @@ const Drawing = {
       Drawing.finishStep(drawing, motion);
       return;
     }
-    motion.started ??= time;
-    const started = motion.started;
-    const elapsed = $f64Max(time - started, 0);
+    const old = motion.lastTime;
+    motion.lastTime = time;
+    const delta = old != null ? $f64Max(time - old, 0) : 0;
+    motion.timeline += delta * drawing.pace.value;
+    const elapsed = motion.timeline;
     let copied;
     while (
       (copied =
@@ -206,6 +208,7 @@ const Drawing = {
           cube: value._0,
           moves: turns.moves,
           index: 0,
+          timeline: 0,
           elapsed: 0,
           unitDuration: $f64Min(240, limit / $f64Max(units, 1)),
           prepared: false,
@@ -232,7 +235,7 @@ const Drawing = {
   },
 };
 
-export function Preview({ view, step, complete, detach }) {
+export function Preview({ view, step, complete, detach, pace }) {
   const canvas = useRef(undefined);
   const drawing = useRef(undefined);
   const [problem, setProblem] = useState(undefined);
@@ -341,6 +344,7 @@ export function Preview({ view, step, complete, detach }) {
       frame: undefined,
       deadline: undefined,
       completedTurns: 0,
+      pace,
     };
     Drawing.cameraView(objects, "perspective");
     Drawing.resize(objects);

@@ -393,6 +393,7 @@ pub fn App() -> JSX::Element {
         Rc::new(move |revision| finishing.presentations.finish(revision));
     let detaching = Rc::clone(&session);
     let detach: Rc<dyn Fn()> = Rc::new(move || detaching.presentations.interrupt());
+    let pace = Rc::clone(&session.presentations.pace);
     let colors: Vec<char> = snapshot.facelets.chars().collect();
 
     jsx! {
@@ -410,7 +411,7 @@ pub fn App() -> JSX::Element {
                 <section className="lab" aria-label="Cube playground">
                     <div className="stage">
                         <div className="stage-top"><span className="eyebrow">{"01 / YOUR NEXT CHALLENGE"}</span><span className="preview-label">{"3 × 3 · LIVE"}</span></div>
-                        <Preview view={*view} step={presentation.clone()} complete={complete} detach={detach} />
+                        <Preview view={*view} step={presentation.clone()} complete={complete} detach={detach} pace={pace} />
                         <div className="stage-bottom"><span>{"LOOK AROUND"}</span><div className="view-controls" role="group" aria-label="Camera view">
                             <button type="button" aria-pressed={*view == "perspective"} onClick={move |_| change_view("perspective")}>{"Perspective"}</button>
                             <button type="button" aria-pressed={*view == "front"} onClick={move |_| change_view("front")}>{"Front"}</button>
@@ -420,7 +421,7 @@ pub fn App() -> JSX::Element {
                         <p className="eyebrow">{"ONE CUBE. EVERY POSSIBILITY."}</p>
                         <h2>{"Your move."}</h2>
                         <div className="game-status" role="status" data-testid="cube-status">{if snapshot.solved { "Solved" } else { "In progress" }}<span>{format!("{} {}", snapshot.move_count, if snapshot.move_count == 1 { "move" } else { "moves" })}</span></div>
-                        <button className="shuffle-button" type="button" disabled={!ready} onClick={move |_| { let session = Rc::clone(&shuffle_button); spawn(Box::new(async move { let revision = session.snapshot().revision; set_problem.set(session.submit(Command { command_id: window.crypto().random_uuid(), expected_revision: revision, action: Action::Shuffle(20) }, None).await.err()); })); }}>{"Shuffle cube ↗"}</button>
+                        <button className="shuffle-button" type="button" disabled={!ready} onClick={move |_| { let session = Rc::clone(&shuffle_button); spawn(Box::new(async move { set_problem.set(session.play(Action::Shuffle(20)).await.err()); })); }}>{"Shuffle cube ↗"}</button>
                         <div className="move-controls" role="group" aria-label="Face turns">
                             {FACES.into_iter().map(|face| {
                                 jsx! { <div className="move-column" key={face.to_string()}>
@@ -430,21 +431,21 @@ pub fn App() -> JSX::Element {
                                         let session = Rc::clone(&session);
                                         jsx! { <button type="button" key={movement.clone()} aria-label={format!("Turn {movement}")} disabled={!ready} onClick={move |_| {
                                             let session = Rc::clone(&session); let command = command.clone();
-                                            spawn(Box::new(async move { let revision = session.snapshot().revision; set_problem.set(session.submit(Command { command_id: window.crypto().random_uuid(), expected_revision: revision, action: Action::Moves(command) }, None).await.err()); }));
+                                            spawn(Box::new(async move { set_problem.set(session.play(Action::Moves(command)).await.err()); }));
                                         }}>{movement}</button> }
                                     }).collect::<Vec<_>>()}
                                 </div> }
                             }).collect::<Vec<_>>()}
                         </div>
                         <p className="notation-note">{"Clockwise from outside · ' inverse · 2 half turn"}</p>
-                        <button className="replay-button" type="button" disabled={!ready || snapshot.move_count == 0 || *replaying} title="Watch this challenge from its starting position" onClick={move |_| {
+                        {(snapshot.solved && snapshot.move_count > 0).then(|| jsx! { <button className="replay-button" type="button" disabled={!ready || snapshot.move_count == 0 || *replaying} title="Watch this challenge from its starting position" onClick={move |_| {
                             let session = Rc::clone(&replay_session);
                             set_replaying.set(true);
                             spawn(Box::new(async move {
                                 set_problem.set(session.replay().await.err());
                                 set_replaying.set(false);
                             }));
-                        }}>{if *replaying { "Replaying…".to_string() } else if snapshot.move_count == 0 { "Replay moves".to_string() } else { format!("Replay {} {}", snapshot.move_count, if snapshot.move_count == 1 { "move" } else { "moves" }) }}</button>
+                        }}>{if *replaying { "Replaying…".to_string() } else if snapshot.move_count == 0 { "Replay moves".to_string() } else { format!("Replay {} {}", snapshot.move_count, if snapshot.move_count == 1 { "move" } else { "moves" }) }}</button> })}
                         {problem.as_ref().map(|message| jsx! { <p role="alert">{message}</p> })}
                         <dl className="status-list">
                             <div><dt>{"Game backend"}</dt><dd>{"Not required"}</dd></div>

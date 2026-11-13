@@ -20,6 +20,8 @@ import {
 export const LocalSession = {
   new(publish, status, presentation) {
     return {
+      inputs: [],
+      processing: false,
       state: Session.snapshot({ cube: cubeDefault_default(), revision: 0, moveCount: 0 }),
       presentations: Presentations.new(
         Session.snapshot({ cube: cubeDefault_default(), revision: 0, moveCount: 0 }),
@@ -34,12 +36,6 @@ export const LocalSession = {
 
   ready(localSession) {
     return localSession.storage != null;
-  },
-  snapshot(localSession) {
-    const borrow = $borrow(localSession.state, true);
-    const props = { ...borrow };
-    $unborrow(borrow);
-    return { ...props };
   },
   setChannel(localSession, channel) {
     $borrowMut($fieldCell(localSession, "channel")).value = channel;
@@ -61,24 +57,27 @@ export const LocalSession = {
       return result$2;
     }
     let snapshot = result$2._0;
+    let turns;
     const action = entryAction(linked, snapshot);
     const changed = action != null;
     if (action != null) {
-      const result = await Storage.submit(storage, {
+      const result$2 = await Storage.submit(storage, {
         commandId: window.crypto.randomUUID(),
         expectedRevision: snapshot.revision,
         action,
       });
-      if (result.TAG === "Err") {
-        return result;
+      if (result$2.TAG === "Err") {
+        return result$2;
       }
-      snapshot = result._0.current;
+      const accepted = result$2._0;
+      snapshot = accepted.current;
+      turns = accepted.turns;
     }
     localSession.status(
       Storage.durable(storage) ? "Saved on this browser" : "Temporary · history not saved",
     );
     localSession.storage = storage;
-    LocalSession.present(localSession, snapshot);
+    LocalSession.present(localSession, snapshot, turns);
     if (changed) {
       LocalSession.notify(localSession);
     }
@@ -123,6 +122,63 @@ export const LocalSession = {
   },
 
   async submit(localSession, command, signal) {
+    const result = await LocalSession.commit(localSession, command, signal);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const [receipt, revision] = result._0;
+    await Presentations.wait(localSession.presentations, revision);
+    return { TAG: "Ok", _0: receipt };
+  },
+
+  async play(localSession, action) {
+    Presentations.humanInput(localSession.presentations, window.performance.now());
+    const waiting = Promise.withResolvers();
+    localSession.inputs.push({
+      action,
+      resolve: waiting.resolve,
+    });
+    const old = localSession.processing;
+    localSession.processing = true;
+    if (!old) {
+      (async () => {
+        await LocalSession.processInputs(localSession);
+      })();
+    }
+    return await waiting.promise;
+  },
+
+  async processInputs(localSession) {
+    while (true) {
+      const next = localSession.inputs.shift();
+      if (next == null) {
+        localSession.processing = false;
+        break;
+      }
+      const result$1 = await LocalSession.acceptInput(localSession, next.action);
+      (0, next.resolve)(result$1);
+    }
+  },
+
+  async acceptInput(localSession, action) {
+    const result = LocalSession.backend(localSession);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const result$1 = await Storage.read(result._0);
+    if (result$1.TAG === "Err") {
+      return result$1;
+    }
+    const snapshot = result$1._0;
+    const result$2 = await LocalSession.commit(localSession, {
+      commandId: window.crypto.randomUUID(),
+      expectedRevision: snapshot.revision,
+      action,
+    });
+    return result$2.TAG === "Ok" ? { TAG: "Ok", _0: result$2._0[0] } : result$2;
+  },
+
+  async commit(localSession, command, signal) {
     const result = LocalSession.backend(localSession);
     if (result.TAG === "Err") {
       return result;
@@ -135,8 +191,7 @@ export const LocalSession = {
       if (value._0.accepted) {
         LocalSession.notify(localSession);
       }
-      await Presentations.wait(localSession.presentations, revision);
-      return { TAG: "Ok", _0: value._0.receipt };
+      return { TAG: "Ok", _0: [value._0.receipt, revision] };
     } else {
       // Refresh stale plans, but never replace saved play with temporary play after a failure.
       const value$1 = await Storage.read(storage);
@@ -164,13 +219,13 @@ export const LocalSession = {
     const current = result$2._0;
     const action = entryAction(linked, current);
     if (action != null) {
-      const result = await LocalSession.submit(localSession, {
+      const result$2 = await LocalSession.submit(localSession, {
         commandId: window.crypto.randomUUID(),
         expectedRevision: current.revision,
         action,
       });
-      if (result.TAG === "Err") {
-        return result;
+      if (result$2.TAG === "Err") {
+        return result$2;
       }
     }
     return { TAG: "Ok" };
@@ -193,14 +248,14 @@ export const LocalSession = {
   },
 
   present(localSession, snapshot, turns) {
-    if (snapshot.revision >= $borrow(localSession.state).revision) {
+    if (snapshot.revision >= localSession.state.revision) {
       const target = `#cube=${snapshot.facelets}`;
       if (window.location.hash !== target) {
         try {
           window.history.replaceState("AgentCube", "", target);
         } catch {}
       }
-      $assign($borrowMut(localSession.state), { ...snapshot });
+      $assign(localSession.state, { ...snapshot });
       const publish = localSession.publish;
       const presentations = localSession.presentations;
       flushSync(() => {

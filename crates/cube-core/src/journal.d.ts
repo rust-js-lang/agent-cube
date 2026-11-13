@@ -38,6 +38,7 @@ export const Journal: {
 };
 
 export interface Turns {
+    reset: boolean;
     from: string;
     moves: Move[];
 }

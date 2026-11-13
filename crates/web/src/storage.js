@@ -306,22 +306,25 @@ const Journal = {
     for (const entry of $slice(journal.entries, boundary != null ? (boundary + 1) >>> 0 : 0)) {
       if (entry.command.action.TAG === "Moves") {
         const text = entry.command.action._0;
-        const result = parseMoves(text);
-        if (result.TAG === "Err") {
-          return result;
+        const result$1 = parseMoves(text);
+        if (result$1.TAG === "Err") {
+          return result$1;
         }
-        for (let i = 0; i < result._0.length; i++) {
-          moves.push(result._0[i]);
+        for (let i = 0; i < result$1._0.length; i++) {
+          moves.push(result$1._0[i]);
         }
       }
     }
-    return { TAG: "Ok", _0: { snapshot: Session$1.snapshot(session), turns: { from, moves } } };
+    return {
+      TAG: "Ok",
+      _0: { snapshot: Session$1.snapshot(session), turns: { reset: true, from, moves } },
+    };
   },
   accept(journal, command, seed) {
     let tmp = true;
     const result$1 = Command.validate(command);
     let result;
-    bb68: {
+    bb79: {
       if (result$1.TAG === "Err") {
         result = result$1;
       } else {
@@ -360,16 +363,31 @@ const Journal = {
             if (result$1.TAG !== "Err") {
               const receipt = result$1._0;
               let turns;
-              if (entry.command.action.TAG === "Moves") {
-                const text = entry.command.action._0;
-                const result$1 = parseMoves(text);
-                if (result$1.TAG !== "Err") {
-                  turns = { from, moves: result$1._0 };
-                } else {
-                  result = result$1;
-                  break bb68;
+              bb52: {
+                if (entry.command.action.TAG === "Moves") {
+                  if (entry.seed == null) {
+                    const text = entry.command.action._0;
+                    const result$1 = parseMoves(text);
+                    if (result$1.TAG !== "Err") {
+                      turns = { reset: false, from, moves: result$1._0 };
+                      break bb52;
+                    }
+                    result = result$1;
+                    break bb79;
+                  }
+                } else if (entry.command.action.TAG === "Shuffle") {
+                  if (entry.seed != null) {
+                    const length = entry.command.action._0;
+                    const seed = entry.seed;
+                    const result$1 = scramble(seed, length);
+                    if (result$1.TAG !== "Err") {
+                      turns = { reset: true, from: SOLVED, moves: result$1._0 };
+                      break bb52;
+                    }
+                    result = result$1;
+                    break bb79;
+                  }
                 }
-              } else {
                 turns = undefined;
               }
               journal.entries.push(entry);
@@ -379,7 +397,7 @@ const Journal = {
               };
             } else {
               result = result$1;
-              break bb68;
+              break bb79;
             }
           }
           if (tmp) {

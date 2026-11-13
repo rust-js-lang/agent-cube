@@ -11,8 +11,9 @@ Local play is implemented: a shared Rust cube engine, all 18 face turns,
 shuffling, a six-face view, animated Three.js cubies with a working no-WebGL view,
 and native WebMCP tools. Rounded cubies and glossy plastic give each face turn
 visible depth. Human and agent moves share ordered, eased layer animations;
-reduced motion presents the final position immediately. Agents inspect the cube
-and submit legal solution moves. After playing, **Replay N moves** watches the
+shuffles animate their scramble, and rapid clicks speed up queued turns without losing moves.
+Reduced motion presents the final position immediately. Agents inspect the cube
+and submit legal solution moves. After solving, **Replay N moves** watches the
 current challenge from its starting position through every accepted move,
 including separate command batches. Replay is read-only, can be repeated after
 reload when storage is available, and stops when new live play commits.
